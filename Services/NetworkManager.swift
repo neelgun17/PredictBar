@@ -1,0 +1,145 @@
+import Foundation
+import Security
+
+class NetworkManager {
+    static let shared = NetworkManager()
+    private let baseURL = URL(string: "https://api.elections.kalshi.com/trade-api/v2")!
+    
+    private init() {}
+    
+    func fetchPortfolio(completion: @escaping (Result<[Position], Error>) -> Void) {
+        guard let request = authenticatedRequest(to: "/portfolio/positions") else {
+            completion(.failure(URLError(.badURL)))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(URLError(.badServerResponse)))
+                return
+            }
+            
+            // Debug: Print response data
+            if let jsonStr = String(data: data, encoding: .utf8) {
+                // print("Portfolio Response: \(jsonStr)")
+            }
+            
+            do {
+                struct PortfolioResponse: Decodable {
+                    let marketPositions: [Position]
+                }
+                
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                
+                let decodedResponse = try decoder.decode(PortfolioResponse.self, from: data)
+                completion(.success(decodedResponse.marketPositions))
+            } catch {
+                print("Decoding error: \(error)")
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+    
+    func fetchBalance(completion: @escaping (Result<UserBalance, Error>) -> Void) {
+        guard let request = authenticatedRequest(to: "/portfolio/balance") else {
+            completion(.failure(URLError(.badURL)))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(URLError(.badServerResponse)))
+                return
+            }
+            
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let decodedResponse = try decoder.decode(BalanceResponse.self, from: data)
+                completion(.success(decodedResponse.balance))
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+    
+    // Helper for authenticated requests
+    private func authenticatedRequest(to endpoint: String) -> URLRequest? {
+        guard let url = URL(string: "https://api.elections.kalshi.com/trade-api/v2" + endpoint) else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let timestamp = String(Int(Date().timeIntervalSince1970 * 1000))
+        let method = "GET"
+        let path = "/trade-api/v2" + endpoint
+        
+        let messageToSign = timestamp + method + path
+        
+        guard let signature = sign(message: messageToSign, privateKeyPEM: Secrets.privateKey) else {
+            print("Failed to generate signature")
+            return nil
+        }
+        
+        request.addValue(Secrets.keyId, forHTTPHeaderField: "KALSHI-ACCESS-KEY")
+        request.addValue(timestamp, forHTTPHeaderField: "KALSHI-ACCESS-TIMESTAMP")
+        request.addValue(signature, forHTTPHeaderField: "KALSHI-ACCESS-SIGNATURE")
+        
+        return request
+    }
+    
+    private func sign(message: String, privateKeyPEM: String) -> String? {
+        guard let data = message.data(using: .utf8) else { return nil }
+        
+        // 1. Clean PEM string
+        let cleanPEM = privateKeyPEM
+            .replacingOccurrences(of: "-----BEGIN RSA PRIVATE KEY-----", with: "")
+            .replacingOccurrences(of: "-----END RSA PRIVATE KEY-----", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+            .replacingOccurrences(of: "\r", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        guard let keyData = Data(base64Encoded: cleanPEM) else {
+            print("Invalid private key format")
+            return nil
+        }
+        
+        // 2. Create SecKey
+        let attributes: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
+            kSecAttrKeyClass as String: kSecAttrKeyClassPrivate
+        ]
+        
+        var error: Unmanaged<CFError>?
+        guard let privateKey = SecKeyCreateWithData(keyData as CFData, attributes as CFDictionary, &error) else {
+            print("Failed to create SecKey: \(error!.takeRetainedValue())")
+            return nil
+        }
+        
+        // 3. Sign with RSA-PSS-SHA256
+        let algorithm: SecKeyAlgorithm = .rsaSignatureMessagePSSSHA256
+        
+        guard SecKeyIsAlgorithmSupported(privateKey, .sign, algorithm) else {
+            print("Algorithm not supported")
+            return nil
+        }
+        
+        guard let signatureData = SecKeyCreateSignature(privateKey, algorithm, data as CFData, &error) else {
+            print("Failed to sign data: \(error!.takeRetainedValue())")
+            return nil
+        }
+        
+        return (signatureData as Data).base64EncodedString()
+    }
+}
