@@ -46,7 +46,11 @@ class NetworkManager {
         }.resume()
     }
     
-    func fetchBalance(completion: @escaping (Result<UserBalance, Error>) -> Void) {
+    struct BalanceResponse: Decodable {
+        let balance: Int
+    }
+
+    func fetchBalance(completion: @escaping (Result<BalanceResponse, Error>) -> Void) {
         guard let request = authenticatedRequest(to: "/portfolio/balance") else {
             completion(.failure(URLError(.badURL)))
             return
@@ -66,9 +70,60 @@ class NetworkManager {
             do {
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
-                let decodedResponse = try decoder.decode(BalanceResponse.self, from: data)
-                completion(.success(decodedResponse.balance))
+                let response = try decoder.decode(BalanceResponse.self, from: data)
+                completion(.success(response))
             } catch {
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+    
+    struct MarketResponse: Decodable {
+        let market: Market
+    }
+
+    struct Market: Decodable {
+        let ticker: String
+        let eventTicker: String
+        let title: String
+        let subtitle: String?
+        let lastPrice: Int?
+        let yesBid: Int?
+        let noBid: Int?
+        
+        enum CodingKeys: String, CodingKey {
+            case ticker
+            case eventTicker = "event_ticker"
+            case title
+            case subtitle
+            case lastPrice = "last_price"
+            case yesBid = "yes_bid"
+            case noBid = "no_bid"
+        }
+    }
+
+    func fetchMarket(ticker: String, completion: @escaping (Result<Market, Error>) -> Void) {
+        guard let request = authenticatedRequest(to: "/markets/\(ticker)") else {
+            completion(.failure(URLError(.badURL)))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(URLError(.badServerResponse)))
+                return
+            }
+            
+            do {
+                let response = try JSONDecoder().decode(MarketResponse.self, from: data)
+                completion(.success(response.market))
+            } catch {
+                print("Decoding error for market \(ticker): \(error)")
                 completion(.failure(error))
             }
         }.resume()

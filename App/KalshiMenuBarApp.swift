@@ -10,7 +10,7 @@ struct KalshiMenuBarApp: App {
             DropdownView(viewModel: dashboardViewModel)
                 .onAppear {
                     print("Bundle ID: \(Bundle.main.bundleIdentifier ?? "nil")")
-                    // UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+//                     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
                 }
         } label: {
             MenuBarIconView(viewModel: dashboardViewModel)

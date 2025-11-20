@@ -25,6 +25,9 @@ let package = Package(
                 "ViewModels",
                 "Views",
                 "Utilities"
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist", "-Xlinker", "Info.plist"])
             ]
         )
     ]

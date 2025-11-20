@@ -5,18 +5,30 @@ struct Position: Identifiable, Codable {
     let position: Int
     let feesPaid: Int?
     let realizedPnl: Int?
+    let totalTraded: Int?
+    
+    // Enriched data from Market API
+    var title: String?
+    var subtitle: String?
+    var eventTicker: String?
     
     // Computed properties for app compatibility
     var id: String { ticker }
     var marketTicker: String { ticker }
     var quantity: Int { position }
     
-    // These would ideally come from a separate market data fetch or WebSocket update
-    // For now, we'll default them or calculate what we can
+    // Determine side based on position sign
+    var side: String {
+        return position > 0 ? "Yes" : "No"
+    }
+    
+    // Cost basis calculation
+    // totalTraded is in cents. We use it as a proxy for cost basis.
+    // Note: This is an approximation if the user has traded in and out.
     var entryPrice: Double {
-        guard let fees = feesPaid, position != 0 else { return 0.0 }
-        // feesPaid is in cents, convert to dollars and average
-        return (Double(fees) / 100.0) / Double(abs(position))
+        guard let cost = totalTraded, position != 0 else { return 0.0 }
+        // cost is in cents, convert to dollars and average
+        return (Double(cost) / 100.0) / Double(abs(position))
     }
     
     // This needs to be updated via WebSocket
@@ -36,5 +48,9 @@ struct Position: Identifiable, Codable {
         case position
         case feesPaid = "fees_paid"
         case realizedPnl = "realized_pnl"
+        case totalTraded = "total_traded"
+        case title
+        case subtitle
+        case eventTicker = "event_ticker"
     }
 }

@@ -33,6 +33,38 @@ class DashboardViewModel: ObservableObject {
                 case .success(let positions):
                     self?.positions = positions
                     self?.calculateTotals()
+                    
+                    // Fetch market details for each position
+                    for (index, position) in positions.enumerated() {
+                        NetworkManager.shared.fetchMarket(ticker: position.ticker) { [weak self] result in
+                            DispatchQueue.main.async {
+                                switch result {
+                                case .success(let market):
+                                    if var updatedPosition = self?.positions[index] {
+                                        updatedPosition.title = market.title
+                                        updatedPosition.subtitle = market.subtitle
+                                        updatedPosition.eventTicker = market.eventTicker
+                                        
+                                        // Update price if available (priority: lastPrice > yesBid)
+                                        if let price = market.lastPrice {
+                                            updatedPosition.currentPrice = Double(price) / 100.0
+                                        } else if let bid = market.yesBid {
+                                            updatedPosition.currentPrice = Double(bid) / 100.0
+                                        }
+                                        
+                                        // Update the position in the array
+                                        // Note: Index might shift if list changes, ideally use ID
+                                        if let currentIdx = self?.positions.firstIndex(where: { $0.ticker == position.ticker }) {
+                                            self?.positions[currentIdx] = updatedPosition
+                                            self?.calculateTotals()
+                                        }
+                                    }
+                                case .failure(let error):
+                                    print("Error fetching market \(position.ticker): \(error)")
+                                }
+                            }
+                        }
+                    }
                 case .failure(let error):
                     print("Error fetching portfolio: \(error)")
                 }
@@ -67,7 +99,7 @@ class DashboardViewModel: ObservableObject {
         content.sound = .default
         
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-        // UNUserNotificationCenter.current().add(request)
+//         UNUserNotificationCenter.current().add(request)
     }
     
     // Called when a WebSocket ticker update is received
@@ -80,7 +112,8 @@ class DashboardViewModel: ObservableObject {
                 ticker: oldPosition.ticker,
                 position: oldPosition.position,
                 feesPaid: oldPosition.feesPaid,
-                realizedPnl: oldPosition.realizedPnl
+                realizedPnl: oldPosition.realizedPnl,
+                totalTraded: oldPosition.totalTraded
             )
             newPosition.currentPrice = price
             
