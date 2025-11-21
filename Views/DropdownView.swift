@@ -7,6 +7,26 @@ struct DropdownView: View {
     // 0: ROI, 1: P&L, 2: Portfolio Value, 3: Account Balance
     @State private var displayMode = 0
     
+    @AppStorage("appearanceMode") private var appearanceMode: String = "System"
+//    @AppStorage("appearanceMode") private var appearanceMode: String = "System"
+    @AppStorage("compactMode") private var compactMode: Bool = false
+    
+    var displayedPositions: [Position] {
+        if compactMode {
+            return Array(viewModel.positions.prefix(3))
+        } else {
+            return viewModel.positions
+        }
+    }
+    
+    var colorScheme: ColorScheme? {
+        switch appearanceMode {
+        case "Light": return .light
+        case "Dark": return .dark
+        default: return nil
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -70,7 +90,7 @@ struct DropdownView: View {
                     
                     ScrollView {
                         VStack(spacing: 0) {
-                            ForEach(viewModel.positions) { position in
+                            ForEach(displayedPositions) { position in
                                 VStack(spacing: 0) {
                                     HStack(spacing: 10) {
                                         // Icon based on side
@@ -194,7 +214,9 @@ struct DropdownView: View {
         .background(.ultraThinMaterial) // Main background
         .popover(isPresented: $showSettings) {
             SettingsView(viewModel: viewModel)
+                .preferredColorScheme(colorScheme)
         }
+        .preferredColorScheme(colorScheme)
     }
     
     // Helper functions for cleaner body

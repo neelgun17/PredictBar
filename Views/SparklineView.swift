@@ -59,7 +59,7 @@ struct SparklineView: View {
                     path.move(to: points.first ?? .zero)
                     points.dropFirst().forEach { path.addLine(to: $0) }
                 }
-                .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                .stroke(color, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
             }
         }
     }

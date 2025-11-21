@@ -5,6 +5,8 @@ struct SettingsView: View {
     @AppStorage("lowROIThreshold") private var lowROIThreshold: Double = -20.0
     @AppStorage("notificationsEnabled") private var notificationsEnabled: Bool = true
     @AppStorage("menuBarMetric") private var menuBarMetric: String = "ROI" // ROI, PnL, Portfolio, Balance, None
+    @AppStorage("appearanceMode") private var appearanceMode: String = "System" // System, Light, Dark
+    @AppStorage("compactMode") private var compactMode: Bool = false
     
     @ObservedObject var viewModel: DashboardViewModel
     
@@ -26,6 +28,17 @@ struct SettingsView: View {
                 .onChange(of: menuBarMetric) { _ in
                     viewModel.updateMenuBarText()
                 }
+            }
+            
+            Section(header: Text("Appearance")) {
+                Picker("Theme", selection: $appearanceMode) {
+                    Text("System").tag("System")
+                    Text("Light").tag("Light")
+                    Text("Dark").tag("Dark")
+                }
+                .pickerStyle(.menu)
+                
+                Toggle("Compact Mode (Top 3)", isOn: $compactMode)
             }
             
             Section(header: Text("Notifications")) {
