@@ -11,6 +11,12 @@ struct DropdownView: View {
                 Text("Kalshi Dashboard")
                     .font(.headline)
                 Spacer()
+                Button(action: { viewModel.fetchData() }) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 8)
+                
                 Button(action: { showSettings.toggle() }) {
                     Image(systemName: "gear")
                 }
@@ -36,8 +42,8 @@ struct DropdownView: View {
                                             .font(.headline)
                                             .lineLimit(1)
                                         
-                                        // Show Side + Subtitle (e.g., "Yes Denver")
-                                        Text("\(position.side) \(position.subtitle ?? "")")
+                                        // Show Side + Subtitle (e.g., "Yes - Denver")
+                                        Text("\(position.side)\(position.subtitle?.isEmpty == false ? " - \(position.subtitle!)" : "")")
                                             .font(.subheadline) // Slightly larger than caption
                                             .foregroundColor(.primary)
                                             .lineLimit(1)
@@ -82,7 +88,7 @@ struct DropdownView: View {
                 Text("Total ROI: \(String(format: "%.2f%%", viewModel.overallROI))")
                     .font(.caption)
                 Spacer()
-                Button("Open on Kalshi") {
+                Button("Open Kalshi") {
                     if let url = URL(string: "https://kalshi.com") {
                         NSWorkspace.shared.open(url)
                     }
