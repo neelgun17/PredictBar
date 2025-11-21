@@ -5,11 +5,12 @@ struct MenuBarIconView: View {
     
     var body: some View {
         // Using Label is often more reliable for system menu bar styling
-        Label {
-            Text(viewModel.overallROI, format: .percent.precision(.fractionLength(2)))
-                .monospacedDigit() // Keeps width stable
-        } icon: {
+        HStack(spacing: 4) {
             Image(systemName: "chart.bar.fill")
+            if !viewModel.menuBarText.isEmpty {
+                Text(viewModel.menuBarText)
+                    .monospacedDigit()
+            }
         }
     }
 }

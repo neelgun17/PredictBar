@@ -98,15 +98,26 @@ struct DropdownView: View {
                                             }
                                         }
                                         
-                                        Spacer()
+                                        Spacer(minLength: 6)
+                                        
+                                        if !position.history.isEmpty {
+                                            SparklineView(data: position.history, color: position.realizedROI >= 0 ? .green : .red)
+                                                .frame(width: 70, height: 28)
+                                        } else {
+                                            SparklineView(data: [0.0, 0.0], color: .secondary)
+                                                .frame(width: 70, height: 28)
+                                                .opacity(0.25)
+                                        }
+                                        
+                                        Spacer(minLength: 6)
                                         
                                         VStack(alignment: .trailing, spacing: 2) {
                                             Text(position.currentPrice, format: .currency(code: "USD"))
                                                 .font(.system(size: 13, weight: .semibold))
                                                 .monospacedDigit()
                                             
-                                            Text(position.realizedROI, format: .percent.precision(.fractionLength(1)))
-                                                .font(.system(size: 11, weight: .medium))
+                                            Text(position.realizedROI.formatted(.percent.precision(.fractionLength(1))))
+                                                .font(.system(.caption, design: .monospaced))
                                                 .foregroundColor(position.realizedROI >= 0 ? .green : .red)
                                                 .monospacedDigit()
                                         }
@@ -182,7 +193,7 @@ struct DropdownView: View {
         .frame(width: 320)
         .background(.ultraThinMaterial) // Main background
         .popover(isPresented: $showSettings) {
-            SettingsView()
+            SettingsView(viewModel: viewModel)
         }
     }
     

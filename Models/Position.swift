@@ -13,6 +13,10 @@ struct Position: Identifiable, Codable {
     var subtitle: String?
     var eventTicker: String?
     var marketUrl: URL?
+    var seriesTicker: String? = nil
+    
+    // History for sparklines
+    var history: [Double] = []
     
     // Computed properties for app compatibility
     var id: String { ticker }

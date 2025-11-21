@@ -303,6 +303,9 @@ class NetworkManager {
         let endPeriodTs: Int?
         let yesBid: PriceWindow?
         let yesAsk: PriceWindow?
+        let price: PriceWindow?
+        let yesPrice: PriceWindow?
+        let midPrice: PriceWindow?
     }
     
     struct PriceWindow: Decodable {
@@ -316,97 +319,165 @@ class NetworkManager {
         let closeDollars: String?
     }
     
-    func fetchMarketHistory(seriesTicker: String, marketTicker: String, completion: @escaping (Result<[Double], Error>) -> Void) {
-        let now = Date()
+    /// Fetch market history using the documented series endpoint only (1m candles).
+    func fetchMarketHistory(seriesTicker: String?, marketTicker: String, completion: @escaping (Result<[Double], Error>) -> Void) {
+        func parsePrices(data: Data) throws -> [Double] {
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let response = try decoder.decode(CandlestickResponse.self, from: data)
+            
+            let sorted = response.candlesticks.sorted { (lhs, rhs) in
+                (lhs.endPeriodTs ?? 0) < (rhs.endPeriodTs ?? 0)
+            }
+            
+            var lastMid: Double?
+            
+            let prices = sorted.compactMap { candle -> Double? in
+                if let midPrice = candle.midPrice?.close {
+                    let mid = Double(midPrice) / 100.0
+                    lastMid = mid
+                    return mid
+                }
+                
+                if let trade = candle.price?.close ?? candle.yesPrice?.close {
+                    let last = Double(trade) / 100.0
+                    lastMid = last
+                    return last
+                }
+                
+                let bidClose = candle.yesBid?.close
+                let askClose = candle.yesAsk?.close
+                
+                if let bid = bidClose, let ask = askClose {
+                    let mid = Double(bid + ask) / 200.0
+                    lastMid = mid
+                    return mid
+                }
+                
+                if let bid = bidClose {
+                    let mid = Double(bid) / 100.0
+                    lastMid = mid
+                    return mid
+                }
+                
+                if let ask = askClose {
+                    let mid = Double(ask) / 100.0
+                    lastMid = mid
+                    return mid
+                }
+                
+                if let dollars = candle.yesBid?.closeDollars, let value = Double(dollars) {
+                    lastMid = value
+                    return value
+                }
+                
+                if let dollars = candle.yesAsk?.closeDollars, let value = Double(dollars) {
+                    lastMid = value
+                    return value
+                }
+                
+                return lastMid
+            }
+            
+            return prices
+        }
         
-        // Rolling 24h window to match Kalshi "1D" axis
-        let end = Int(now.timeIntervalSince1970)
-        let start = end - (24 * 60 * 60)
+        func logResponse(_ label: String, _ data: Data?, _ response: URLResponse?, _ error: Error?) {
+            if let error = error {
+                print("Candles \(label) error: \(error)")
+                return
+            }
+            guard let http = response as? HTTPURLResponse else { print("Candles \(label) missing HTTP response"); return }
+            print("Candles \(label) status: \(http.statusCode)")
+            if let data = data, let body = String(data: data, encoding: .utf8) {
+                print("Candles \(label) body: \(body.prefix(200))")
+            }
+        }
         
-        // Use URLComponents to safely construct the URL with query parameters
-        // Series ticker is required in the path per Kalshi docs; omitting it yields 404
-        var components = URLComponents(string: "/series/\(seriesTicker)/markets/\(marketTicker)/candlesticks")
-        components?.queryItems = [
-            URLQueryItem(name: "start_ts", value: String(start)),
-            URLQueryItem(name: "end_ts", value: String(end)),
-            URLQueryItem(name: "period_interval", value: "1") // 1 minute candles
+        func makeSeriesRequest(start: Int, end: Int) -> URLRequest? {
+            guard let series = seriesTicker else { return nil }
+            var components = URLComponents(string: "/series/\(series)/markets/\(marketTicker)/candlesticks")
+            components?.queryItems = [
+                URLQueryItem(name: "start_ts", value: String(start)),
+                URLQueryItem(name: "end_ts", value: String(end)),
+                URLQueryItem(name: "period_interval", value: "1")
+            ]
+            guard let endpoint = components?.string else { return nil }
+            return authenticatedRequest(to: endpoint)
+        }
+        
+        func runRequest(_ request: URLRequest, label: String, onResult: @escaping (Result<[Double], Error>) -> Void) {
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                guard let http = response as? HTTPURLResponse else {
+                    logResponse(label, data, response, error)
+                    onResult(.failure(URLError(.badServerResponse)))
+                    return
+                }
+                
+                if !(200...299).contains(http.statusCode) {
+                    logResponse(label, data, response, error)
+                    onResult(.failure(URLError(.badServerResponse)))
+                    return
+                }
+                
+                guard let data = data else {
+                    logResponse(label, data, response, error)
+                    onResult(.failure(URLError(.badServerResponse)))
+                    return
+                }
+                
+                do {
+                    let prices = try parsePrices(data: data)
+                    if prices.isEmpty {
+                        print("Candles \(label) empty prices")
+                        onResult(.failure(URLError(.cannotParseResponse)))
+                    } else {
+                        onResult(.success(prices))
+                    }
+                } catch {
+                    print("Candles \(label) decode error: \(error)")
+                    onResult(.failure(error))
+                }
+            }.resume()
+        }
+        
+        // Try current 24h window, then a 24h window ending 24h ago (helps if local clock is skewed)
+        let now = Int(Date().timeIntervalSince1970)
+        let windows = [
+            (start: now - 24 * 60 * 60, end: now),
+            (start: now - 48 * 60 * 60, end: now - 24 * 60 * 60)
         ]
         
-        guard let endpoint = components?.string,
-              let request = authenticatedRequest(to: endpoint) else { // Use default (Elections API)
+        guard let seriesTicker = seriesTicker else {
+            print("Candles missing series ticker for \(marketTicker)")
             completion(.failure(URLError(.badURL)))
             return
         }
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                completion(.failure(error))
+        func attemptWindow(index: Int) {
+            guard index < windows.count else {
+                completion(.failure(URLError(.cannotFindHost)))
                 return
             }
             
-            guard let data = data else {
-                completion(.failure(URLError(.badServerResponse)))
+            let window = windows[index]
+            guard let seriesReq = makeSeriesRequest(start: window.start, end: window.end) else {
+                completion(.failure(URLError(.badURL)))
                 return
             }
             
-            do {
-                let decoder = JSONDecoder()
-                decoder.keyDecodingStrategy = .convertFromSnakeCase
-                let response = try decoder.decode(CandlestickResponse.self, from: data)
-                
-                // Derive a price series that matches Kalshi "chance" (mid of bid/ask when available)
-                let sorted = response.candlesticks.sorted { (lhs, rhs) in
-                    (lhs.endPeriodTs ?? 0) < (rhs.endPeriodTs ?? 0)
+            print("Candles series URL: \(seriesReq.url?.absoluteString ?? "nil")")
+            runRequest(seriesReq, label: "series \(seriesReq.url?.absoluteString ?? "")") { result in
+                switch result {
+                case .success(let prices):
+                    completion(.success(prices))
+                case .failure:
+                    // Try next window
+                    attemptWindow(index: index + 1)
                 }
-                
-                var lastMid: Double?
-                
-                let prices = sorted.compactMap { candle -> Double? in
-                    let bidClose = candle.yesBid?.close
-                    let askClose = candle.yesAsk?.close
-                    
-                    if let bid = bidClose, let ask = askClose {
-                        let mid = Double(bid + ask) / 200.0 // average, values in cents
-                        lastMid = mid
-                        return mid
-                    }
-                    
-                    if let bid = bidClose {
-                        let mid = Double(bid) / 100.0
-                        lastMid = mid
-                        return mid
-                    }
-                    
-                    if let ask = askClose {
-                        let mid = Double(ask) / 100.0
-                        lastMid = mid
-                        return mid
-                    }
-                    
-                    if let dollars = candle.yesBid?.closeDollars, let value = Double(dollars) {
-                        lastMid = value
-                        return value
-                    }
-                    
-                    if let dollars = candle.yesAsk?.closeDollars, let value = Double(dollars) {
-                        lastMid = value
-                        return value
-                    }
-                    
-                    // Forward-fill with last known mid; drop if none yet
-                    if let mid = lastMid {
-                        return mid
-                    }
-                    
-                    return nil
-                }
-                completion(.success(prices))
-            } catch {
-                if let jsonStr = String(data: data, encoding: .utf8) {
-                     print("History fetch failed for \(marketTicker). Raw response: \(jsonStr)")
-                }
-                completion(.failure(error))
             }
-        }.resume()
+        }
+        
+        attemptWindow(index: 0)
     }
 }

@@ -7,6 +7,7 @@ class DashboardViewModel: ObservableObject {
     @Published var overallPnL: Double = 0.0
     @Published var portfolioValue: Double = 0.0
     @Published var accountBalance: Double = 0.0
+    @Published var menuBarText: String = ""
     @Published var positions: [Position] = []
     @Published var isConnected: Bool = false
     
@@ -47,6 +48,7 @@ class DashboardViewModel: ObservableObject {
             DispatchQueue.main.async {
                 if case .success(let response) = result {
                     self?.accountBalance = Double(response.balance) / 100.0
+                    self?.updateMenuBarText()
                     self?.portfolioValue = Double(response.portfolioValue) / 100.0
                 }
             }
@@ -113,9 +115,24 @@ class DashboardViewModel: ObservableObject {
                                                     DispatchQueue.main.async {
                                                         switch result {
                                                         case .success(let event):
-                                                            // We need to find where to store the slug/URL.
-                                                            // For now, let's just print the event response to find the slug.
-                                                            // print("Fetched event: \(event.eventTicker)")
+                                                            // Store series ticker for later use
+                                                            if let idx = self?.positions.firstIndex(where: { $0.ticker == position.ticker }) {
+                                                                self?.positions[idx].seriesTicker = event.seriesTicker
+                                                            }
+                                                            
+                                                            // Fetch candlestick history once we have the series ticker
+                                                            NetworkManager.shared.fetchMarketHistory(
+                                                                seriesTicker: event.seriesTicker,
+                                                                marketTicker: position.marketTicker
+                                                            ) { [weak self] result in
+                                                                DispatchQueue.main.async {
+                                                                    if case .success(let history) = result {
+                                                                        if let idx = self?.positions.firstIndex(where: { $0.ticker == position.ticker }) {
+                                                                            self?.positions[idx].history = history
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
                                                             
                                                             // Fetch Series to get the slug
                                                             NetworkManager.shared.fetchSeries(seriesTicker: event.seriesTicker) { [weak self] result in
@@ -177,7 +194,25 @@ class DashboardViewModel: ObservableObject {
             overallROI = 0.0
         }
         
+        updateMenuBarText()
         checkThresholds()
+    }
+    
+    func updateMenuBarText() {
+        let metric = UserDefaults.standard.string(forKey: "menuBarMetric") ?? "ROI"
+        
+        switch metric {
+        case "ROI":
+            menuBarText = overallROI.formatted(.percent.precision(.fractionLength(1)))
+        case "PnL":
+            menuBarText = overallPnL.formatted(.currency(code: "USD"))
+        case "Portfolio":
+            menuBarText = portfolioValue.formatted(.currency(code: "USD"))
+        case "Balance":
+            menuBarText = accountBalance.formatted(.currency(code: "USD"))
+        default:
+            menuBarText = ""
+        }
     }
     
     private var lastNotificationTime: Date?
@@ -250,6 +285,10 @@ class DashboardViewModel: ObservableObject {
 
         if let executable = executable {
             position.currentPrice = executable
+            position.history.append(executable)
+            if position.history.count > 50 { // Keep last 50 points
+                position.history.removeFirst()
+            }
             positions[index] = position
             calculateTotals()
         }

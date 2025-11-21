@@ -4,6 +4,9 @@ struct SettingsView: View {
     @AppStorage("highROIThreshold") private var highROIThreshold: Double = 20.0
     @AppStorage("lowROIThreshold") private var lowROIThreshold: Double = -20.0
     @AppStorage("notificationsEnabled") private var notificationsEnabled: Bool = true
+    @AppStorage("menuBarMetric") private var menuBarMetric: String = "ROI" // ROI, PnL, Portfolio, Balance, None
+    
+    @ObservedObject var viewModel: DashboardViewModel
     
     @State private var apiKey: String = ""
     @State private var apiSecret: String = ""
@@ -11,6 +14,20 @@ struct SettingsView: View {
     
     var body: some View {
         Form {
+            Section(header: Text("Menu Bar Display")) {
+                Picker("Show Metric", selection: $menuBarMetric) {
+                    Text("ROI").tag("ROI")
+                    Text("P&L").tag("PnL")
+                    Text("Portfolio Value").tag("Portfolio")
+                    Text("Balance").tag("Balance")
+                    Text("None").tag("None")
+                }
+                .pickerStyle(.menu)
+                .onChange(of: menuBarMetric) { _ in
+                    viewModel.updateMenuBarText()
+                }
+            }
+            
             Section(header: Text("Notifications")) {
                 Toggle("Enable Notifications", isOn: $notificationsEnabled)
                 
