@@ -21,6 +21,11 @@ struct KalshiMenuBarApp: App {
             MenuBarIconView(viewModel: dashboardViewModel)
         }
         .menuBarExtraStyle(.window) // Allows for complex SwiftUI views in the dropdown
+        
+        Settings {
+            SettingsView()
+                .applyAppearance(appearanceMode)
+        }
     }
 }
 

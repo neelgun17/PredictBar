@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import UserNotifications
 
+@MainActor
 class DashboardViewModel: ObservableObject {
     @Published var overallROI: Double = 0.0
     @Published var overallPnL: Double = 0.0
@@ -39,6 +40,25 @@ class DashboardViewModel: ObservableObject {
             .sink { [weak self] _ in
                 self?.fetchData()
             }
+            .store(in: &cancellables)
+            
+        // Listen to Settings changes
+        SettingsViewModel.shared.$menuBarMetric
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateMenuBarText() }
+            .store(in: &cancellables)
+            
+        SettingsViewModel.shared.$notificationsEnabled
+            .sink { [weak self] _ in self?.checkThresholds() }
+            .store(in: &cancellables)
+            
+        SettingsViewModel.shared.$highROIThreshold
+            .sink { [weak self] _ in self?.checkThresholds() }
+            .store(in: &cancellables)
+            
+        SettingsViewModel.shared.$lowROIThreshold
+            .sink { [weak self] _ in self?.checkThresholds() }
             .store(in: &cancellables)
     }
     
@@ -199,7 +219,7 @@ class DashboardViewModel: ObservableObject {
     }
     
     func updateMenuBarText() {
-        let metric = UserDefaults.standard.string(forKey: "menuBarMetric") ?? "ROI"
+        let metric = SettingsViewModel.shared.menuBarMetric
         
         switch metric {
         case "ROI":
@@ -218,17 +238,12 @@ class DashboardViewModel: ObservableObject {
     private var lastNotificationTime: Date?
     
     private func checkThresholds() {
-        let defaults = UserDefaults.standard
-        let notificationsEnabled = defaults.bool(forKey: "notificationsEnabled")
+        let notificationsEnabled = SettingsViewModel.shared.notificationsEnabled
         
         guard notificationsEnabled else { return }
         
-        // Defaults: High +20%, Low -20%
-        // Note: UserDefaults returns 0 if key doesn't exist, so we need to handle defaults carefully if we want non-zero defaults when not set.
-        // However, @AppStorage in SettingsView initializes them. If the user hasn't opened settings, they might be 0.
-        // Better to use a helper or safe defaults.
-        let highThreshold = (defaults.object(forKey: "highROIThreshold") as? Double ?? 20.0) / 100.0
-        let lowThreshold = (defaults.object(forKey: "lowROIThreshold") as? Double ?? -20.0) / 100.0
+        let highThreshold = SettingsViewModel.shared.highROIThreshold / 100.0
+        let lowThreshold = SettingsViewModel.shared.lowROIThreshold / 100.0
         
         // Debounce: Don't notify more than once every 5 minutes
         if let lastTime = lastNotificationTime, Date().timeIntervalSince(lastTime) < 300 {

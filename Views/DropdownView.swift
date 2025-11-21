@@ -3,7 +3,6 @@ import SwiftUI
 struct DropdownView: View {
     @ObservedObject var viewModel: DashboardViewModel
     
-    @State private var showSettings = false
     // 0: ROI, 1: P&L, 2: Portfolio Value, 3: Account Balance
     @State private var displayMode = 0
     
@@ -46,13 +45,33 @@ struct DropdownView: View {
                     .buttonStyle(.plain)
                     .help("Refresh")
                     
-                    Button(action: { showSettings.toggle() }) {
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
+                    if #available(macOS 14.0, *) {
+                        if isRunningFromAppBundle {
+                            SettingsLink {
+                                Image(systemName: "gearshape.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Settings")
+                        } else {
+                            Button(action: openSettings) {
+                                Image(systemName: "gearshape.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Settings")
+                        }
+                    } else {
+                        Button(action: openSettings) {
+                            Image(systemName: "gearshape.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Settings")
                     }
-                    .buttonStyle(.plain)
-                    .help("Settings")
                 }
             }
             .padding(.horizontal, 12)
@@ -212,11 +231,6 @@ struct DropdownView: View {
         }
         .frame(width: 320)
         .background(.ultraThinMaterial) // Main background
-        .popover(isPresented: $showSettings) {
-            SettingsView(viewModel: viewModel)
-                .preferredColorScheme(colorScheme)
-        }
-        .preferredColorScheme(colorScheme)
     }
     
     // Helper functions for cleaner body
@@ -255,6 +269,26 @@ struct DropdownView: View {
         case 0: return viewModel.overallROI >= 0 ? .green : .red
         case 1: return viewModel.overallPnL >= 0 ? .green : .red
         default: return .primary
+        }
+    }
+    
+    private var isRunningFromAppBundle: Bool {
+        Bundle.main.bundleURL.pathExtension == "app"
+    }
+    
+    private func openSettings() {
+        // If we're not in a bundled app (e.g., `swift run`), show our manual settings window to avoid the SettingsLink warning.
+        guard isRunningFromAppBundle else {
+            SettingsWindowManager.shared.open()
+            return
+        }
+        
+        // Try to trigger the SwiftUI Settings scene; fall back to manual window if not handled.
+        let handled = NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            || NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        
+        if !handled {
+            SettingsWindowManager.shared.open()
         }
     }
 }
