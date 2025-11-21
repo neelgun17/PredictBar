@@ -230,6 +230,9 @@ class NetworkManager {
     // Helper for authenticated requests
     private func authenticatedRequest(to endpoint: String) -> URLRequest? {
         guard let url = URL(string: "https://api.elections.kalshi.com/trade-api/v2" + endpoint) else { return nil }
+        
+        print("DEBUG: Requesting URL: \(url.absoluteString)")
+        
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -289,5 +292,121 @@ class NetworkManager {
         }
         
         return (signatureData as Data).base64EncodedString()
+    }
+    
+    struct CandlestickResponse: Decodable {
+        let ticker: String?
+        let candlesticks: [Candlestick]
+    }
+    
+    struct Candlestick: Decodable {
+        let endPeriodTs: Int?
+        let yesBid: PriceWindow?
+        let yesAsk: PriceWindow?
+    }
+    
+    struct PriceWindow: Decodable {
+        let open: Int?
+        let high: Int?
+        let low: Int?
+        let close: Int?
+        let openDollars: String?
+        let highDollars: String?
+        let lowDollars: String?
+        let closeDollars: String?
+    }
+    
+    func fetchMarketHistory(seriesTicker: String, marketTicker: String, completion: @escaping (Result<[Double], Error>) -> Void) {
+        let now = Date()
+        
+        // Rolling 24h window to match Kalshi "1D" axis
+        let end = Int(now.timeIntervalSince1970)
+        let start = end - (24 * 60 * 60)
+        
+        // Use URLComponents to safely construct the URL with query parameters
+        // Series ticker is required in the path per Kalshi docs; omitting it yields 404
+        var components = URLComponents(string: "/series/\(seriesTicker)/markets/\(marketTicker)/candlesticks")
+        components?.queryItems = [
+            URLQueryItem(name: "start_ts", value: String(start)),
+            URLQueryItem(name: "end_ts", value: String(end)),
+            URLQueryItem(name: "period_interval", value: "1") // 1 minute candles
+        ]
+        
+        guard let endpoint = components?.string,
+              let request = authenticatedRequest(to: endpoint) else { // Use default (Elections API)
+            completion(.failure(URLError(.badURL)))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(URLError(.badServerResponse)))
+                return
+            }
+            
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let response = try decoder.decode(CandlestickResponse.self, from: data)
+                
+                // Derive a price series that matches Kalshi "chance" (mid of bid/ask when available)
+                let sorted = response.candlesticks.sorted { (lhs, rhs) in
+                    (lhs.endPeriodTs ?? 0) < (rhs.endPeriodTs ?? 0)
+                }
+                
+                var lastMid: Double?
+                
+                let prices = sorted.compactMap { candle -> Double? in
+                    let bidClose = candle.yesBid?.close
+                    let askClose = candle.yesAsk?.close
+                    
+                    if let bid = bidClose, let ask = askClose {
+                        let mid = Double(bid + ask) / 200.0 // average, values in cents
+                        lastMid = mid
+                        return mid
+                    }
+                    
+                    if let bid = bidClose {
+                        let mid = Double(bid) / 100.0
+                        lastMid = mid
+                        return mid
+                    }
+                    
+                    if let ask = askClose {
+                        let mid = Double(ask) / 100.0
+                        lastMid = mid
+                        return mid
+                    }
+                    
+                    if let dollars = candle.yesBid?.closeDollars, let value = Double(dollars) {
+                        lastMid = value
+                        return value
+                    }
+                    
+                    if let dollars = candle.yesAsk?.closeDollars, let value = Double(dollars) {
+                        lastMid = value
+                        return value
+                    }
+                    
+                    // Forward-fill with last known mid; drop if none yet
+                    if let mid = lastMid {
+                        return mid
+                    }
+                    
+                    return nil
+                }
+                completion(.success(prices))
+            } catch {
+                if let jsonStr = String(data: data, encoding: .utf8) {
+                     print("History fetch failed for \(marketTicker). Raw response: \(jsonStr)")
+                }
+                completion(.failure(error))
+            }
+        }.resume()
     }
 }
