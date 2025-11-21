@@ -6,7 +6,7 @@ struct MenuBarIconView: View {
     var body: some View {
         // Using Label is often more reliable for system menu bar styling
         Label {
-            Text(String(format: "%.2f%%", viewModel.overallROI))
+            Text(viewModel.overallROI, format: .percent.precision(.fractionLength(2)))
                 .monospacedDigit() // Keeps width stable
         } icon: {
             Image(systemName: "chart.bar.fill")

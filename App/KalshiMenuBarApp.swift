@@ -9,7 +9,6 @@ struct KalshiMenuBarApp: App {
         MenuBarExtra {
             DropdownView(viewModel: dashboardViewModel)
                 .onAppear {
-                    print("Bundle ID: \(Bundle.main.bundleIdentifier ?? "nil")")
 //                     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
                 }
         } label: {

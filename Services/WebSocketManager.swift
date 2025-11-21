@@ -20,7 +20,6 @@ class WebSocketManager: ObservableObject {
         disconnect()
         
         guard let request = createAuthenticatedRequest() else {
-            print("Failed to create authenticated request. Check Secrets.swift.")
             return
         }
         
@@ -29,7 +28,6 @@ class WebSocketManager: ObservableObject {
         webSocketTask?.resume()
         
         isConnected = true
-        print("WebSocket connecting...")
         
         receiveMessage()
         startPing()
@@ -47,8 +45,7 @@ class WebSocketManager: ObservableObject {
         pingTimer?.invalidate()
         pingTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
             self?.webSocketTask?.sendPing { error in
-                if let error = error {
-                    print("Ping failed: \(error)")
+                if error != nil {
                     self?.handleDisconnection()
                 }
             }
@@ -57,7 +54,6 @@ class WebSocketManager: ObservableObject {
     
     private func handleDisconnection() {
         guard isConnected else { return }
-        print("WebSocket disconnected. Reconnecting in 5s...")
         isConnected = false
         pingTimer?.invalidate()
         
@@ -77,7 +73,6 @@ class WebSocketManager: ObservableObject {
         let messageToSign = timestamp + method + path
         
         guard let signature = sign(message: messageToSign, privateKeyPEM: Secrets.privateKey) else {
-            print("Failed to generate signature")
             return nil
         }
         
@@ -100,7 +95,6 @@ class WebSocketManager: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard let keyData = Data(base64Encoded: cleanPEM) else {
-            print("Invalid private key format")
             return nil
         }
         
@@ -112,7 +106,6 @@ class WebSocketManager: ObservableObject {
         
         var error: Unmanaged<CFError>?
         guard let privateKey = SecKeyCreateWithData(keyData as CFData, attributes as CFDictionary, &error) else {
-            print("Failed to create SecKey: \(error!.takeRetainedValue())")
             return nil
         }
         
@@ -120,26 +113,30 @@ class WebSocketManager: ObservableObject {
         let algorithm: SecKeyAlgorithm = .rsaSignatureMessagePSSSHA256
         
         guard SecKeyIsAlgorithmSupported(privateKey, .sign, algorithm) else {
-            print("Algorithm not supported")
             return nil
         }
         
         guard let signatureData = SecKeyCreateSignature(privateKey, algorithm, data as CFData, &error) else {
-            print("Failed to sign data: \(error!.takeRetainedValue())")
             return nil
         }
         
         return (signatureData as Data).base64EncodedString()
     }
     
-    // Publisher for price updates (Ticker, Price in Cents)
-    let priceUpdate = PassthroughSubject<(String, Int), Never>()
+    struct TickerQuote {
+        let ticker: String
+        let lastPrice: Int?
+        let yesBid: Int?
+        let yesAsk: Int?
+    }
+    
+    // Publisher for price updates with executable context
+    let priceUpdate = PassthroughSubject<TickerQuote, Never>()
     
     // Store subscribed tickers to re-subscribe on reconnection
     private var subscribedTickers: [String] = []
     
     func subscribeToTickers(_ tickers: [String]) {
-        print("WebSocketManager: subscribeToTickers called with \(tickers)")
         guard !tickers.isEmpty else { return }
         self.subscribedTickers = tickers
         
@@ -158,18 +155,11 @@ class WebSocketManager: ObservableObject {
         
         guard let jsonData = try? JSONSerialization.data(withJSONObject: messageDict),
               let messageString = String(data: jsonData, encoding: .utf8) else {
-            print("Failed to create subscription message")
             return
         }
         
         let messageOperation = URLSessionWebSocketTask.Message.string(messageString)
-        webSocketTask?.send(messageOperation) { error in
-            if let error = error {
-                print("WebSocket sending error: \(error)")
-            } else {
-                print("Subscribed to tickers: \(tickers)")
-            }
-        }
+        webSocketTask?.send(messageOperation) { _ in }
     }
     
     func disconnect() {
@@ -182,15 +172,14 @@ class WebSocketManager: ObservableObject {
     private func receiveMessage() {
         webSocketTask?.receive { [weak self] result in
             switch result {
-            case .failure(let error):
-                print("WebSocket error: \(error)")
+            case .failure:
                 self?.handleDisconnection()
             case .success(let message):
                 switch message {
                 case .string(let text):
                     self?.handleMessage(text)
-                case .data(let data):
-                    print("Received data: \(data)")
+                case .data:
+                    break
                 @unknown default:
                     break
                 }
@@ -220,15 +209,20 @@ class WebSocketManager: ObservableObject {
             let message = try JSONDecoder().decode(WebSocketMessage.self, from: data)
             
             if message.type == "ticker", let tickerData = message.msg, let ticker = tickerData.market_ticker {
-                // Prioritize last traded price, then yes_bid
-                let currentPrice = tickerData.price ?? tickerData.yes_bid ?? 0
+                print(text) // raw ticker data payload
+                let quote = TickerQuote(
+                    ticker: ticker,
+                    lastPrice: tickerData.price,
+                    yesBid: tickerData.yes_bid,
+                    yesAsk: tickerData.yes_ask
+                )
                 
                 DispatchQueue.main.async {
-                    self.priceUpdate.send((ticker, currentPrice))
+                    self.priceUpdate.send(quote)
                 }
             }
         } catch {
-            print("WebSocket decoding error: \(error)")
+            return
         }
     }
 }

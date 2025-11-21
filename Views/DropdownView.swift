@@ -55,13 +55,17 @@ struct DropdownView: View {
                                     
                                     Spacer()
                                     
-                                    VStack(alignment: .trailing) {
+                                    VStack(alignment: .trailing, spacing: 2) {
                                         Text(position.currentPrice, format: .currency(code: "USD"))
                                             .font(.headline)
+
+                                        Text("ROI")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
                                         
-                                        Text("\(position.roi, specifier: "%.1f")%")
+                                        Text(position.realizedROI, format: .percent.precision(.fractionLength(1)))
                                             .font(.caption)
-                                            .foregroundColor(position.roi >= 0 ? .green : .red)
+                                            .foregroundColor(position.realizedROI >= 0 ? .green : .red)
                                     }
                                 }
                             }
@@ -88,7 +92,7 @@ struct DropdownView: View {
             Divider()
             
             HStack {
-                Text("Total ROI: \(String(format: "%.2f%%", viewModel.overallROI))")
+                Text("TOTAL ROI: \(viewModel.overallROI.formatted(.percent.precision(.fractionLength(2))))")
                     .font(.caption)
                 Spacer()
                 Button("Open Kalshi") {

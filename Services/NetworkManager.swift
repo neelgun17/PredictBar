@@ -24,11 +24,6 @@ class NetworkManager {
                 return
             }
             
-            // Debug: Print response data
-            if let jsonStr = String(data: data, encoding: .utf8) {
-                 print("Portfolio Response: \(jsonStr)")
-            }
-            
             do {
                 struct PortfolioResponse: Decodable {
                     let marketPositions: [Position]
@@ -40,7 +35,6 @@ class NetworkManager {
                 let decodedResponse = try decoder.decode(PortfolioResponse.self, from: data)
                 completion(.success(decodedResponse.marketPositions))
             } catch {
-                print("Decoding error: \(error)")
                 completion(.failure(error))
             }
         }.resume()
@@ -90,6 +84,8 @@ class NetworkManager {
         let lastPrice: Int?
         let yesBid: Int?
         let noBid: Int?
+        let yesAsk: Int?
+        let noAsk: Int?
         
         enum CodingKeys: String, CodingKey {
             case ticker
@@ -99,6 +95,8 @@ class NetworkManager {
             case lastPrice = "last_price"
             case yesBid = "yes_bid"
             case noBid = "no_bid"
+            case yesAsk = "yes_ask"
+            case noAsk = "no_ask"
         }
     }
 
@@ -128,7 +126,6 @@ class NetworkManager {
                 let response = try JSONDecoder().decode(MarketResponse.self, from: data)
                 completion(.success(response.market))
             } catch {
-                print("Decoding error for market \(ticker): \(error)")
                 completion(.failure(error))
             }
         }.resume()
@@ -172,7 +169,7 @@ class NetworkManager {
             do {
                 // Debug: Print event response
                 if let jsonStr = String(data: data, encoding: .utf8) {
-                     print("Event Response for \(eventTicker): \(jsonStr)")
+                     // print("Event Response for \(eventTicker): \(jsonStr)")
                 }
                 
                 let decoder = JSONDecoder()
@@ -180,7 +177,6 @@ class NetworkManager {
                 let response = try decoder.decode(EventResponse.self, from: data)
                 completion(.success(response.event))
             } catch {
-                print("Decoding error for event \(eventTicker): \(error)")
                 completion(.failure(error))
             }
         }.resume()
@@ -225,7 +221,6 @@ class NetworkManager {
                 let response = try decoder.decode(SeriesResponse.self, from: data)
                 completion(.success(response.series))
             } catch {
-                print("Decoding error for series \(seriesTicker): \(error)")
                 completion(.failure(error))
             }
         }.resume()
@@ -245,7 +240,6 @@ class NetworkManager {
         let messageToSign = timestamp + method + path
         
         guard let signature = sign(message: messageToSign, privateKeyPEM: Secrets.privateKey) else {
-            print("Failed to generate signature")
             return nil
         }
         
@@ -268,7 +262,6 @@ class NetworkManager {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard let keyData = Data(base64Encoded: cleanPEM) else {
-            print("Invalid private key format")
             return nil
         }
         
@@ -280,7 +273,6 @@ class NetworkManager {
         
         var error: Unmanaged<CFError>?
         guard let privateKey = SecKeyCreateWithData(keyData as CFData, attributes as CFDictionary, &error) else {
-            print("Failed to create SecKey: \(error!.takeRetainedValue())")
             return nil
         }
         
@@ -288,12 +280,10 @@ class NetworkManager {
         let algorithm: SecKeyAlgorithm = .rsaSignatureMessagePSSSHA256
         
         guard SecKeyIsAlgorithmSupported(privateKey, .sign, algorithm) else {
-            print("Algorithm not supported")
             return nil
         }
         
         guard let signatureData = SecKeyCreateSignature(privateKey, algorithm, data as CFData, &error) else {
-            print("Failed to sign data: \(error!.takeRetainedValue())")
             return nil
         }
         

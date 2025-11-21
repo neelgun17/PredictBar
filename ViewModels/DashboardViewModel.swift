@@ -24,16 +24,8 @@ class DashboardViewModel: ObservableObject {
             
         WebSocketManager.shared.priceUpdate
             .receive(on: RunLoop.main)
-            .sink { [weak self] (ticker, price) in
-                // Convert price from cents to dollars
-                let priceInDollars = Double(price) / 100.0
-                self?.updatePrice(for: ticker, price: priceInDollars)
-                
-                // Friendly logging
-                if let position = self?.positions.first(where: { $0.marketTicker == ticker }) {
-                    let title = position.title ?? ticker
-                    print("Price Update: \(title) (\(ticker)) - \(priceInDollars.formatted(.currency(code: "USD")))")
-                }
+            .sink { [weak self] quote in
+                self?.updatePrice(with: quote)
             }
             .store(in: &cancellables)
 //            .store(in: &cancellables)
@@ -41,7 +33,6 @@ class DashboardViewModel: ObservableObject {
         // Auto-refresh data every 30 seconds
         timer
             .sink { [weak self] _ in
-                print("Auto-refreshing data...")
                 self?.fetchData()
             }
             .store(in: &cancellables)
@@ -54,19 +45,12 @@ class DashboardViewModel: ObservableObject {
                 case .success(let positions):
                     // Filter out positions with 0 quantity (sold out)
                     let activePositions = positions.filter { $0.position != 0 }
-                    print("Fetched \(positions.count) positions, \(activePositions.count) active")
-                    
-                    // Debug cost basis
-                    for p in activePositions {
-                        print("Position \(p.ticker): Qty=\(p.position), TotalTraded=\(p.totalTraded ?? -1)")
-                    }
                     
                     self?.positions = activePositions
                     self?.calculateTotals()
                     
                     // Subscribe to WebSocket updates for these tickers
                     let tickers = positions.map { $0.ticker }
-                    print("DashboardVM: Calling subscribe for tickers: \(tickers)")
                     WebSocketManager.shared.subscribeToTickers(tickers)
                     
                     // Fetch market details for each position
@@ -75,9 +59,6 @@ class DashboardViewModel: ObservableObject {
                             DispatchQueue.main.async {
                                 switch result {
                                 case .success(let market):
-                                    print("Fetched market for \(position.ticker): Title='\(market.title)', Subtitle='\(market.subtitle ?? "nil")'")
-                                    print("Fetched market for \(position.ticker): Title='\(market.title)', Subtitle='\(market.subtitle ?? "nil")'")
-                                    
                                     // Find the current index of this position safely
                                     if let currentIdx = self?.positions.firstIndex(where: { $0.ticker == position.ticker }) {
                                         var updatedPosition = self?.positions[currentIdx]
@@ -93,11 +74,19 @@ class DashboardViewModel: ObservableObject {
                                         
                                         updatedPosition?.eventTicker = market.eventTicker
                                         
-                                        // Update price if available (priority: lastPrice > yesBid)
-                                        if let price = market.lastPrice {
-                                            updatedPosition?.currentPrice = Double(price) / 100.0
-                                        } else if let bid = market.yesBid {
-                                            updatedPosition?.currentPrice = Double(bid) / 100.0
+                                        // Update price to the executable sell price (best current bid for this side)
+                                        let yesBid = market.yesBid.map { Double($0) / 100.0 }
+                                        let noBid = market.noBid.map { Double($0) / 100.0 }
+                                        let yesAsk = market.yesAsk.map { Double($0) / 100.0 }
+                                        let lastPrice = market.lastPrice.map { Double($0) / 100.0 }
+                                        
+                                        if let executable = updatedPosition?.executableSellPrice(
+                                            yesBid: yesBid,
+                                            noBid: noBid,
+                                            yesAsk: yesAsk,
+                                            lastPrice: lastPrice
+                                        ) {
+                                            updatedPosition?.currentPrice = executable
                                         }
                                         
                                         // Save back to the array
@@ -131,44 +120,44 @@ class DashboardViewModel: ObservableObject {
                                                                         let urlString = "https://kalshi.com/markets/\(series.ticker.lowercased())/\(slug)/\(event.eventTicker.lowercased())"
                                                                         
                                                                         if let url = URL(string: urlString) {
-                                                                            print("Generated URL for \(position.ticker): \(url)")
                                                                             // Update position safely
                                                                             if let idx = self?.positions.firstIndex(where: { $0.ticker == position.ticker }) {
                                                                                 self?.positions[idx].marketUrl = url
                                                                             }
                                                                         }
                                                                         
-                                                                    case .failure(let error):
-                                                                        print("Error fetching series: \(error)")
+                                                                    case .failure:
+                                                                        break
                                                                     }
                                                                 }
                                                             }
-                                                        case .failure(let error):
-                                                            print("Error fetching event: \(error)")
+                                                        case .failure:
+                                                            break
                                                         }
                                                     }
                                                 }
                                         }
                                     }
-                                case .failure(let error):
-                                    print("Error fetching market \(position.ticker): \(error)")
+                                case .failure:
+                                    break
                                 }
                             }
                         }
                     }
-                case .failure(let error):
-                    print("Error fetching portfolio: \(error)")
+                case .failure:
+                    break
                 }
             }
         }
     }
     
     private func calculateTotals() {
-        let totalCost = positions.reduce(0.0) { $0 + ($1.entryPrice * Double($1.quantity)) }
-        let currentValue = positions.reduce(0.0) { $0 + ($1.currentPrice * Double($1.quantity)) }
+        // Portfolio-level realized ROI after fees, based on actual cost basis and current net proceeds
+        let totalCost = positions.reduce(0.0) { $0 + $1.totalCostBasis }
+        let totalNetProceeds = positions.reduce(0.0) { $0 + $1.netProceedsAfterFees }
         
         if totalCost > 0 {
-            overallROI = ((currentValue - totalCost) / totalCost) * 100.0
+            overallROI = (totalNetProceeds - totalCost) / totalCost
         } else {
             overallROI = 0.0
         }
@@ -178,7 +167,7 @@ class DashboardViewModel: ObservableObject {
     
     private func checkThresholds() {
         // Simple check: if ROI > 20%
-        if overallROI > 20.0 {
+        if overallROI > 0.20 {
             sendNotification(title: "High ROI Alert", body: "Your portfolio ROI has exceeded 20%!")
         }
     }
@@ -194,18 +183,22 @@ class DashboardViewModel: ObservableObject {
     }
     
     // Called when a WebSocket ticker update is received
-    func updatePrice(for ticker: String, price: Double) {
-        if let index = positions.firstIndex(where: { $0.marketTicker == ticker }) {
-            // Create a mutable copy of the position
-            var position = positions[index]
-            
-            // Update the price
-            position.currentPrice = price
-            
-            // Save back to the array (triggers UI update)
+    func updatePrice(with quote: WebSocketManager.TickerQuote) {
+        guard let index = positions.firstIndex(where: { $0.marketTicker == quote.ticker }) else { return }
+
+        var position = positions[index]
+
+        let yesBid = quote.yesBid.map { Double($0) / 100.0 }
+        let yesAsk = quote.yesAsk.map { Double($0) / 100.0 }
+        let lastPrice = quote.lastPrice.map { Double($0) / 100.0 }
+
+        // WebSocket stream does not carry noBid; fall back to derived price for "No"
+        let executable = position.executableSellPrice(yesBid: yesBid, noBid: nil, yesAsk: yesAsk, lastPrice: lastPrice)
+
+        if let executable = executable {
+            position.currentPrice = executable
             positions[index] = position
             calculateTotals()
         }
     }
 }
-
