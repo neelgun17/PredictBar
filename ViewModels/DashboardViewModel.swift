@@ -4,6 +4,9 @@ import UserNotifications
 
 class DashboardViewModel: ObservableObject {
     @Published var overallROI: Double = 0.0
+    @Published var overallPnL: Double = 0.0
+    @Published var portfolioValue: Double = 0.0
+    @Published var accountBalance: Double = 0.0
     @Published var positions: [Position] = []
     @Published var isConnected: Bool = false
     
@@ -39,6 +42,16 @@ class DashboardViewModel: ObservableObject {
     }
     
     func fetchData() {
+        // Fetch Balance
+        NetworkManager.shared.fetchBalance { [weak self] result in
+            DispatchQueue.main.async {
+                if case .success(let response) = result {
+                    self?.accountBalance = Double(response.balance) / 100.0
+                    self?.portfolioValue = Double(response.portfolioValue) / 100.0
+                }
+            }
+        }
+        
         NetworkManager.shared.fetchPortfolio { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
@@ -156,8 +169,10 @@ class DashboardViewModel: ObservableObject {
         let totalCost = positions.reduce(0.0) { $0 + $1.totalCostBasis }
         let totalNetProceeds = positions.reduce(0.0) { $0 + $1.netProceedsAfterFees }
         
+        overallPnL = totalNetProceeds - totalCost
+        
         if totalCost > 0 {
-            overallROI = (totalNetProceeds - totalCost) / totalCost
+            overallROI = overallPnL / totalCost
         } else {
             overallROI = 0.0
         }

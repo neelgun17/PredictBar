@@ -4,12 +4,20 @@ struct DropdownView: View {
     @ObservedObject var viewModel: DashboardViewModel
     
     @State private var showSettings = false
+    // 0: ROI, 1: P&L, 2: Portfolio Value, 3: Account Balance
+    @State private var displayMode = 0
     
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Text("Kalshi Dashboard")
                     .font(.headline)
+                    .onTapGesture {
+                        if let url = URL(string: "https://kalshi.com") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .help("Open Kalshi Homepage")
                 Spacer()
                 Button(action: { viewModel.fetchData() }) {
                     Image(systemName: "arrow.clockwise")
@@ -92,16 +100,35 @@ struct DropdownView: View {
             Divider()
             
             HStack {
-                Text("TOTAL ROI: \(viewModel.overallROI.formatted(.percent.precision(.fractionLength(2))))")
-                    .font(.caption)
-                Spacer()
-                Button("Open Kalshi") {
-                    if let url = URL(string: "https://kalshi.com") {
-                        NSWorkspace.shared.open(url)
+                Group {
+                    switch displayMode {
+                    case 0:
+                        Text("TOTAL ROI: \(viewModel.overallROI.formatted(.percent.precision(.fractionLength(2))))")
+                            .foregroundColor(viewModel.overallROI >= 0 ? .green : .red)
+                    case 1:
+                        Text("TOTAL P&L: \(viewModel.overallPnL.formatted(.currency(code: "USD")))")
+                            .foregroundColor(viewModel.overallPnL >= 0 ? .green : .red)
+                    case 2:
+                        Text("POSITIONS: \(viewModel.portfolioValue.formatted(.currency(code: "USD")))")
+                            .foregroundColor(.primary)
+                    case 3:
+                        Text("CASH: \(viewModel.accountBalance.formatted(.currency(code: "USD")))")
+                            .foregroundColor(.primary)
+                    default:
+                        EmptyView()
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
+                .font(.caption)
+                .fontWeight(.medium)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation {
+                        displayMode = (displayMode + 1) % 4
+                    }
+                }
+                .help("Click to cycle: ROI -> P&L -> Portfolio -> Balance")
+                
+                Spacer()
             }
             .padding()
             .background(Color(NSColor.windowBackgroundColor))

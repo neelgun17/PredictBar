@@ -42,6 +42,7 @@ class NetworkManager {
     
     struct BalanceResponse: Decodable {
         let balance: Int
+        let portfolioValue: Int
     }
 
     func fetchBalance(completion: @escaping (Result<BalanceResponse, Error>) -> Void) {
