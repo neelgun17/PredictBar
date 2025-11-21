@@ -9,7 +9,11 @@ struct KalshiMenuBarApp: App {
         MenuBarExtra {
             DropdownView(viewModel: dashboardViewModel)
                 .onAppear {
-//                     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+                    if Bundle.main.bundleURL.pathExtension == "app" {
+                        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+                    } else {
+                        print("WARNING: App is not running inside a .app bundle. Notifications are disabled to prevent crashes.")
+                    }
                 }
         } label: {
             MenuBarIconView(viewModel: dashboardViewModel)

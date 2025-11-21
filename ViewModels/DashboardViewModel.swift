@@ -180,21 +180,59 @@ class DashboardViewModel: ObservableObject {
         checkThresholds()
     }
     
+    private var lastNotificationTime: Date?
+    
     private func checkThresholds() {
-        // Simple check: if ROI > 20%
-        if overallROI > 0.20 {
-            sendNotification(title: "High ROI Alert", body: "Your portfolio ROI has exceeded 20%!")
+        let defaults = UserDefaults.standard
+        let notificationsEnabled = defaults.bool(forKey: "notificationsEnabled")
+        
+        guard notificationsEnabled else { return }
+        
+        // Defaults: High +20%, Low -20%
+        // Note: UserDefaults returns 0 if key doesn't exist, so we need to handle defaults carefully if we want non-zero defaults when not set.
+        // However, @AppStorage in SettingsView initializes them. If the user hasn't opened settings, they might be 0.
+        // Better to use a helper or safe defaults.
+        let highThreshold = (defaults.object(forKey: "highROIThreshold") as? Double ?? 20.0) / 100.0
+        let lowThreshold = (defaults.object(forKey: "lowROIThreshold") as? Double ?? -20.0) / 100.0
+        
+        // Debounce: Don't notify more than once every 5 minutes
+        if let lastTime = lastNotificationTime, Date().timeIntervalSince(lastTime) < 300 {
+            return
+        }
+        
+        var shouldNotify = false
+        var title = ""
+        var body = ""
+        
+        if overallROI >= highThreshold {
+            shouldNotify = true
+            title = "High ROI Alert 🚀"
+            body = "Your portfolio ROI is up to \(overallROI.formatted(.percent.precision(.fractionLength(1))))!"
+        } else if overallROI <= lowThreshold {
+            shouldNotify = true
+            title = "Low ROI Alert 📉"
+            body = "Your portfolio ROI has dropped to \(overallROI.formatted(.percent.precision(.fractionLength(1))))."
+        }
+        
+        if shouldNotify {
+            sendNotification(title: title, body: body)
+            lastNotificationTime = Date()
         }
     }
     
     private func sendNotification(title: String, body: String) {
+        guard Bundle.main.bundleURL.pathExtension == "app" else {
+            print("Cannot send notification: App is not in a .app bundle")
+            return
+        }
+        
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.sound = .default
         
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-//         UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request)
     }
     
     // Called when a WebSocket ticker update is received
