@@ -11,6 +11,7 @@ struct Position: Identifiable, Codable {
     var title: String?
     var subtitle: String?
     var eventTicker: String?
+    var marketUrl: URL?
     
     // Computed properties for app compatibility
     var id: String { ticker }
@@ -34,23 +35,35 @@ struct Position: Identifiable, Codable {
     // This needs to be updated via WebSocket
     var currentPrice: Double = 0.0
     
+    // Kalshi Fee Calculation: 0.07 * price * (1 - price)
+    // Rounded to nearest cent
+    // Returns the estimated payout per share (price - commission)
+    private func calculateEstimatedPayout(price: Double) -> Double {
+        let commission = 0.07 * price * (1.0 - price)
+        let roundedCommission = (commission * 100.0).rounded(.toNearestOrAwayFromZero) / 100.0
+        return price - roundedCommission
+    }
+    
     var roi: Double {
         guard entryPrice > 0 else { return 0.0 }
-        return ((currentPrice - entryPrice) / entryPrice) * 100.0
+        
+        let payoutPerShare = calculateEstimatedPayout(price: currentPrice)
+        return ((payoutPerShare - entryPrice) / entryPrice) * 100.0
     }
     
     var pnl: Double {
-        return (currentPrice - entryPrice) * Double(quantity)
+        let payoutPerShare = calculateEstimatedPayout(price: currentPrice)
+        return (payoutPerShare - entryPrice) * Double(quantity)
     }
     
     enum CodingKeys: String, CodingKey {
         case ticker
         case position
-        case feesPaid = "fees_paid"
-        case realizedPnl = "realized_pnl"
-        case totalTraded = "total_traded"
+        case feesPaid
+        case realizedPnl
+        case totalTraded
         case title
         case subtitle
-        case eventTicker = "event_ticker"
+        case eventTicker
     }
 }

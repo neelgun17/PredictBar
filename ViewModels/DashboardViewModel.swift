@@ -22,8 +22,29 @@ class DashboardViewModel: ObservableObject {
             .assign(to: \.isConnected, on: self)
             .store(in: &cancellables)
             
-        // Listen for WebSocket messages (Need to expose a publisher in WebSocketManager)
-        // For now, we'll simulate it or add a callback
+        WebSocketManager.shared.priceUpdate
+            .receive(on: RunLoop.main)
+            .sink { [weak self] (ticker, price) in
+                // Convert price from cents to dollars
+                let priceInDollars = Double(price) / 100.0
+                self?.updatePrice(for: ticker, price: priceInDollars)
+                
+                // Friendly logging
+                if let position = self?.positions.first(where: { $0.marketTicker == ticker }) {
+                    let title = position.title ?? ticker
+                    print("Price Update: \(title) (\(ticker)) - \(priceInDollars.formatted(.currency(code: "USD")))")
+                }
+            }
+            .store(in: &cancellables)
+//            .store(in: &cancellables)
+            
+        // Auto-refresh data every 30 seconds
+        timer
+            .sink { [weak self] _ in
+                print("Auto-refreshing data...")
+                self?.fetchData()
+            }
+            .store(in: &cancellables)
     }
     
     func fetchData() {
@@ -31,8 +52,22 @@ class DashboardViewModel: ObservableObject {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let positions):
-                    self?.positions = positions
+                    // Filter out positions with 0 quantity (sold out)
+                    let activePositions = positions.filter { $0.position != 0 }
+                    print("Fetched \(positions.count) positions, \(activePositions.count) active")
+                    
+                    // Debug cost basis
+                    for p in activePositions {
+                        print("Position \(p.ticker): Qty=\(p.position), TotalTraded=\(p.totalTraded ?? -1)")
+                    }
+                    
+                    self?.positions = activePositions
                     self?.calculateTotals()
+                    
+                    // Subscribe to WebSocket updates for these tickers
+                    let tickers = positions.map { $0.ticker }
+                    print("DashboardVM: Calling subscribe for tickers: \(tickers)")
+                    WebSocketManager.shared.subscribeToTickers(tickers)
                     
                     // Fetch market details for each position
                     for (index, position) in positions.enumerated() {
@@ -40,23 +75,79 @@ class DashboardViewModel: ObservableObject {
                             DispatchQueue.main.async {
                                 switch result {
                                 case .success(let market):
-                                    if var updatedPosition = self?.positions[index] {
-                                        updatedPosition.title = market.title
-                                        updatedPosition.subtitle = market.subtitle
-                                        updatedPosition.eventTicker = market.eventTicker
+                                    print("Fetched market for \(position.ticker): Title='\(market.title)', Subtitle='\(market.subtitle ?? "nil")'")
+                                    print("Fetched market for \(position.ticker): Title='\(market.title)', Subtitle='\(market.subtitle ?? "nil")'")
+                                    
+                                    // Find the current index of this position safely
+                                    if let currentIdx = self?.positions.firstIndex(where: { $0.ticker == position.ticker }) {
+                                        var updatedPosition = self?.positions[currentIdx]
+                                        
+                                        updatedPosition?.title = market.title
+                                        
+                                        // Use API subtitle, or fallback to ticker suffix (e.g., "PHI" from "...-PHI")
+                                        if let sub = market.subtitle, !sub.isEmpty {
+                                            updatedPosition?.subtitle = sub
+                                        } else {
+                                            updatedPosition?.subtitle = position.ticker.components(separatedBy: "-").last
+                                        }
+                                        
+                                        updatedPosition?.eventTicker = market.eventTicker
                                         
                                         // Update price if available (priority: lastPrice > yesBid)
                                         if let price = market.lastPrice {
-                                            updatedPosition.currentPrice = Double(price) / 100.0
+                                            updatedPosition?.currentPrice = Double(price) / 100.0
                                         } else if let bid = market.yesBid {
-                                            updatedPosition.currentPrice = Double(bid) / 100.0
+                                            updatedPosition?.currentPrice = Double(bid) / 100.0
                                         }
                                         
-                                        // Update the position in the array
-                                        // Note: Index might shift if list changes, ideally use ID
-                                        if let currentIdx = self?.positions.firstIndex(where: { $0.ticker == position.ticker }) {
-                                            self?.positions[currentIdx] = updatedPosition
+                                        // Save back to the array
+                                        if let finalPosition = updatedPosition {
+                                            self?.positions[currentIdx] = finalPosition
                                             self?.calculateTotals()
+                                            
+                                            // Fetch Event details to get the correct URL slug
+                                            let eventTicker = market.eventTicker
+                                            NetworkManager.shared.fetchEvent(eventTicker: eventTicker) { [weak self] result in
+                                                    DispatchQueue.main.async {
+                                                        switch result {
+                                                        case .success(let event):
+                                                            // We need to find where to store the slug/URL.
+                                                            // For now, let's just print the event response to find the slug.
+                                                            // print("Fetched event: \(event.eventTicker)")
+                                                            
+                                                            // Fetch Series to get the slug
+                                                            NetworkManager.shared.fetchSeries(seriesTicker: event.seriesTicker) { [weak self] result in
+                                                                DispatchQueue.main.async {
+                                                                    switch result {
+                                                                    case .success(let series):
+                                                                        // Construct URL: https://kalshi.com/markets/{series}/{slug}/{event}
+                                                                        let slug = series.title
+                                                                            .lowercased()
+                                                                            .replacingOccurrences(of: " ", with: "-")
+                                                                            .folding(options: .diacriticInsensitive, locale: .current)
+                                                                            .components(separatedBy: CharacterSet.alphanumerics.inverted.subtracting(.init(charactersIn: "-")))
+                                                                            .joined()
+                                                                        
+                                                                        let urlString = "https://kalshi.com/markets/\(series.ticker.lowercased())/\(slug)/\(event.eventTicker.lowercased())"
+                                                                        
+                                                                        if let url = URL(string: urlString) {
+                                                                            print("Generated URL for \(position.ticker): \(url)")
+                                                                            // Update position safely
+                                                                            if let idx = self?.positions.firstIndex(where: { $0.ticker == position.ticker }) {
+                                                                                self?.positions[idx].marketUrl = url
+                                                                            }
+                                                                        }
+                                                                        
+                                                                    case .failure(let error):
+                                                                        print("Error fetching series: \(error)")
+                                                                    }
+                                                                }
+                                                            }
+                                                        case .failure(let error):
+                                                            print("Error fetching event: \(error)")
+                                                        }
+                                                    }
+                                                }
                                         }
                                     }
                                 case .failure(let error):
@@ -105,20 +196,16 @@ class DashboardViewModel: ObservableObject {
     // Called when a WebSocket ticker update is received
     func updatePrice(for ticker: String, price: Double) {
         if let index = positions.firstIndex(where: { $0.marketTicker == ticker }) {
-            let oldPosition = positions[index]
+            // Create a mutable copy of the position
+            var position = positions[index]
             
-            // Create a new position with updated price
-            var newPosition = Position(
-                ticker: oldPosition.ticker,
-                position: oldPosition.position,
-                feesPaid: oldPosition.feesPaid,
-                realizedPnl: oldPosition.realizedPnl,
-                totalTraded: oldPosition.totalTraded
-            )
-            newPosition.currentPrice = price
+            // Update the price
+            position.currentPrice = price
             
-            positions[index] = newPosition
+            // Save back to the array (triggers UI update)
+            positions[index] = position
             calculateTotals()
         }
     }
 }
+

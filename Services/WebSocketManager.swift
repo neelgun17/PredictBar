@@ -1,17 +1,24 @@
 import Foundation
 import Security
+import Combine
 
 class WebSocketManager: ObservableObject {
     static let shared = WebSocketManager()
     private var webSocketTask: URLSessionWebSocketTask?
-    // Updated URL to the correct endpoint
+    // Updated URL to the correct endpoint per documentation
     private let url = URL(string: "wss://api.elections.kalshi.com/trade-api/ws/v2")!
     
     @Published var isConnected = false
     
+    private var pingTimer: Timer?
+    private var reconnectTimer: Timer?
+    
     private init() {}
     
     func connect() {
+        // Cancel any existing connection or timers
+        disconnect()
+        
         guard let request = createAuthenticatedRequest() else {
             print("Failed to create authenticated request. Check Secrets.swift.")
             return
@@ -21,15 +28,42 @@ class WebSocketManager: ObservableObject {
         webSocketTask = session.webSocketTask(with: request)
         webSocketTask?.resume()
         
-        // Note: isConnected should ideally be set upon successful connection open, 
-        // but URLSessionWebSocketTask doesn't have a direct delegate for that.
-        // We assume connected if no error immediately.
         isConnected = true
-        receiveMessage()
+        print("WebSocket connecting...")
         
-        // Auto-subscribe after connection
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            self.subscribeToTickers()
+        receiveMessage()
+        startPing()
+        
+        // Auto-subscribe after connection (if we have tickers)
+        // Note: Ideally we'd store the tickers and re-subscribe here
+        if !subscribedTickers.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.subscribeToTickers(self?.subscribedTickers ?? [])
+            }
+        }
+    }
+    
+    private func startPing() {
+        pingTimer?.invalidate()
+        pingTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
+            self?.webSocketTask?.sendPing { error in
+                if let error = error {
+                    print("Ping failed: \(error)")
+                    self?.handleDisconnection()
+                }
+            }
+        }
+    }
+    
+    private func handleDisconnection() {
+        guard isConnected else { return }
+        print("WebSocket disconnected. Reconnecting in 5s...")
+        isConnected = false
+        pingTimer?.invalidate()
+        
+        reconnectTimer?.invalidate()
+        reconnectTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
+            self?.connect()
         }
     }
     
@@ -98,26 +132,49 @@ class WebSocketManager: ObservableObject {
         return (signatureData as Data).base64EncodedString()
     }
     
-    func subscribeToTickers() {
-        // Example subscription message
-        let message = """
-        {
+    // Publisher for price updates (Ticker, Price in Cents)
+    let priceUpdate = PassthroughSubject<(String, Int), Never>()
+    
+    // Store subscribed tickers to re-subscribe on reconnection
+    private var subscribedTickers: [String] = []
+    
+    func subscribeToTickers(_ tickers: [String]) {
+        print("WebSocketManager: subscribeToTickers called with \(tickers)")
+        guard !tickers.isEmpty else { return }
+        self.subscribedTickers = tickers
+        
+        // Construct the subscription message
+        // Note: Kalshi API expects "market_tickers" in params to filter
+        let params: [String: Any] = [
+            "channels": ["ticker"],
+            "market_tickers": tickers
+        ]
+        
+        let messageDict: [String: Any] = [
             "id": 1,
             "cmd": "subscribe",
-            "params": {
-                "channels": ["ticker"]
-            }
+            "params": params
+        ]
+        
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: messageDict),
+              let messageString = String(data: jsonData, encoding: .utf8) else {
+            print("Failed to create subscription message")
+            return
         }
-        """
-        let messageOperation = URLSessionWebSocketTask.Message.string(message)
+        
+        let messageOperation = URLSessionWebSocketTask.Message.string(messageString)
         webSocketTask?.send(messageOperation) { error in
             if let error = error {
                 print("WebSocket sending error: \(error)")
+            } else {
+                print("Subscribed to tickers: \(tickers)")
             }
         }
     }
     
     func disconnect() {
+        pingTimer?.invalidate()
+        reconnectTimer?.invalidate()
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         isConnected = false
     }
@@ -127,12 +184,10 @@ class WebSocketManager: ObservableObject {
             switch result {
             case .failure(let error):
                 print("WebSocket error: \(error)")
-                self?.isConnected = false
-                // Implement reconnection logic here
+                self?.handleDisconnection()
             case .success(let message):
                 switch message {
                 case .string(let text):
-                    // print("Received string: \(text)")
                     self?.handleMessage(text)
                 case .data(let data):
                     print("Received data: \(data)")
@@ -145,10 +200,35 @@ class WebSocketManager: ObservableObject {
         }
     }
     
+    // Structures for decoding WebSocket messages
+    private struct WebSocketMessage: Decodable {
+        let type: String?
+        let msg: TickerData?
+    }
+    
+    private struct TickerData: Decodable {
+        let market_ticker: String?
+        let price: Int?
+        let yes_bid: Int?
+        let yes_ask: Int?
+    }
+    
     private func handleMessage(_ text: String) {
-        // Parse JSON and notify observers
-        // For now, just printing
         guard let data = text.data(using: .utf8) else { return }
-        // Decode logic would go here
+        
+        do {
+            let message = try JSONDecoder().decode(WebSocketMessage.self, from: data)
+            
+            if message.type == "ticker", let tickerData = message.msg, let ticker = tickerData.market_ticker {
+                // Prioritize last traded price, then yes_bid
+                let currentPrice = tickerData.price ?? tickerData.yes_bid ?? 0
+                
+                DispatchQueue.main.async {
+                    self.priceUpdate.send((ticker, currentPrice))
+                }
+            }
+        } catch {
+            print("WebSocket decoding error: \(error)")
+        }
     }
 }

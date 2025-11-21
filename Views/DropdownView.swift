@@ -69,7 +69,10 @@ struct DropdownView: View {
                             .padding(.horizontal) // Added horizontal padding for the content
                             .contentShape(Rectangle()) // Make entire row clickable
                             .onTapGesture {
-                                if let eventTicker = position.eventTicker {
+                                if let url = position.marketUrl {
+                                    NSWorkspace.shared.open(url)
+                                } else if let eventTicker = position.eventTicker {
+                                    // Fallback
                                     if let url = URL(string: "https://kalshi.com/markets/\(eventTicker)") {
                                         NSWorkspace.shared.open(url)
                                     }

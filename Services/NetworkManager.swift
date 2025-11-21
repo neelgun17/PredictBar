@@ -26,7 +26,7 @@ class NetworkManager {
             
             // Debug: Print response data
             if let jsonStr = String(data: data, encoding: .utf8) {
-                // print("Portfolio Response: \(jsonStr)")
+                 print("Portfolio Response: \(jsonStr)")
             }
             
             do {
@@ -120,10 +120,112 @@ class NetworkManager {
             }
             
             do {
+                // Debug: Print market response
+                if let jsonStr = String(data: data, encoding: .utf8) {
+                     // print("Market Response for \(ticker): \(jsonStr)")
+                }
+                
                 let response = try JSONDecoder().decode(MarketResponse.self, from: data)
                 completion(.success(response.market))
             } catch {
                 print("Decoding error for market \(ticker): \(error)")
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+    
+    struct EventResponse: Decodable {
+        let event: Event
+    }
+    
+    struct Event: Decodable {
+        let eventTicker: String
+        let seriesTicker: String
+        let subTitle: String?
+        let title: String
+        
+        enum CodingKeys: String, CodingKey {
+            case eventTicker
+            case seriesTicker
+            case subTitle
+            case title
+        }
+    }
+    
+    func fetchEvent(eventTicker: String, completion: @escaping (Result<Event, Error>) -> Void) {
+        guard let request = authenticatedRequest(to: "/events/\(eventTicker)") else {
+            completion(.failure(URLError(.badURL)))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(URLError(.badServerResponse)))
+                return
+            }
+            
+            do {
+                // Debug: Print event response
+                if let jsonStr = String(data: data, encoding: .utf8) {
+                     print("Event Response for \(eventTicker): \(jsonStr)")
+                }
+                
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let response = try decoder.decode(EventResponse.self, from: data)
+                completion(.success(response.event))
+            } catch {
+                print("Decoding error for event \(eventTicker): \(error)")
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+    
+    struct SeriesResponse: Decodable {
+        let series: Series
+    }
+    
+    struct Series: Decodable {
+        let ticker: String
+        let title: String
+        // We hope the slug is here, maybe as 'url_slug' or derived from title?
+        // Let's inspect the raw JSON first.
+    }
+    
+    func fetchSeries(seriesTicker: String, completion: @escaping (Result<Series, Error>) -> Void) {
+        guard let request = authenticatedRequest(to: "/series/\(seriesTicker)") else {
+            completion(.failure(URLError(.badURL)))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(URLError(.badServerResponse)))
+                return
+            }
+            
+            do {
+                // Debug: Print series response
+                // if let jsonStr = String(data: data, encoding: .utf8) {
+                //      print("Series Response for \(seriesTicker): \(jsonStr)")
+                // }
+                
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let response = try decoder.decode(SeriesResponse.self, from: data)
+                completion(.success(response.series))
+            } catch {
+                print("Decoding error for series \(seriesTicker): \(error)")
                 completion(.failure(error))
             }
         }.resume()
