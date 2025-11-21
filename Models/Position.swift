@@ -6,6 +6,7 @@ struct Position: Identifiable, Codable {
     let feesPaid: Int?
     let realizedPnl: Int?
     let totalTraded: Int?
+    let marketExposure: Int?
     
     // Enriched data from Market API
     var title: String?
@@ -24,9 +25,12 @@ struct Position: Identifiable, Codable {
     }
     
     // Cost basis calculation
-    // totalTraded is in cents. We use it as a proxy for cost basis.
-    // Note: This is an approximation if the user has traded in and out.
+    // Use marketExposure (cents) from API if available, otherwise fallback to totalTraded
     var entryPrice: Double {
+        if let exposure = marketExposure, position != 0 {
+            return (Double(exposure) / 100.0) / Double(abs(position))
+        }
+        
         guard let cost = totalTraded, position != 0 else { return 0.0 }
         // cost is in cents, convert to dollars and average
         return (Double(cost) / 100.0) / Double(abs(position))
@@ -34,6 +38,9 @@ struct Position: Identifiable, Codable {
 
     /// Total dollars spent to open the position (cost basis)
     var totalCostBasis: Double {
+        if let exposure = marketExposure {
+            return Double(exposure) / 100.0
+        }
         let contracts = Double(abs(quantity))
         return contracts * entryPrice
     }
@@ -113,6 +120,7 @@ struct Position: Identifiable, Codable {
         case feesPaid
         case realizedPnl
         case totalTraded
+        case marketExposure
         case title
         case subtitle
         case eventTicker
