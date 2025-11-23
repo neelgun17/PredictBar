@@ -33,6 +33,18 @@ class SettingsViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(lowROIThreshold, forKey: "lowROIThreshold") }
     }
     
+    @Published var autoEnableNewAlerts: Bool {
+        didSet { UserDefaults.standard.set(autoEnableNewAlerts, forKey: "autoEnableNewAlerts") }
+    }
+    
+    @Published var alertSettings: [String: AlertSettings] {
+        didSet {
+            if let encoded = try? JSONEncoder().encode(alertSettings) {
+                UserDefaults.standard.set(encoded, forKey: "alertSettings")
+            }
+        }
+    }
+    
     // MARK: - API Credentials (Keychain)
     @Published var apiKey: String = ""
     @Published var apiSecret: String = ""
@@ -44,6 +56,14 @@ class SettingsViewModel: ObservableObject {
         self.appearanceMode = defaults.string(forKey: "appearanceMode") ?? "System"
         self.compactMode = defaults.bool(forKey: "compactMode")
         self.notificationsEnabled = defaults.bool(forKey: "notificationsEnabled")
+        self.autoEnableNewAlerts = defaults.bool(forKey: "autoEnableNewAlerts")
+        
+        if let data = defaults.data(forKey: "alertSettings"),
+           let decoded = try? JSONDecoder().decode([String: AlertSettings].self, from: data) {
+            self.alertSettings = decoded
+        } else {
+            self.alertSettings = [:]
+        }
         
         // Handle potential missing keys for thresholds by setting defaults if 0 (unless 0 is valid, but for thresholds usually not default)
         // Better to just read and if nil/0 use default.
@@ -73,4 +93,35 @@ class SettingsViewModel: ObservableObject {
             _ = KeychainManager.shared.save(apiSecret, for: "kalshi_token")
         }
     }
+    
+    // MARK: - Helper Methods for Alerts
+    
+    func getAlertSettings(for ticker: String) -> AlertSettings {
+        if let settings = alertSettings[ticker] {
+            return settings
+        }
+        
+        // If no settings exist, create default based on auto-enable preference
+        // But we don't save it yet until explicitly interacted with
+        return AlertSettings(isEnabled: autoEnableNewAlerts, useGlobal: true)
+    }
+    
+    func updateAlertSettings(for ticker: String, settings: AlertSettings) {
+        alertSettings[ticker] = settings
+    }
+    
+    func toggleAlert(for ticker: String) {
+        var settings = getAlertSettings(for: ticker)
+        settings.isEnabled.toggle()
+        updateAlertSettings(for: ticker, settings: settings)
+    }
+}
+
+struct AlertSettings: Codable, Equatable {
+    var isEnabled: Bool
+    var useGlobal: Bool = true
+    var highROI: Double?
+    var lowROI: Double?
+    var targetProfit: Double?
+    var targetPrice: Double?
 }

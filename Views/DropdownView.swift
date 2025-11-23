@@ -2,9 +2,11 @@ import SwiftUI
 
 struct DropdownView: View {
     @ObservedObject var viewModel: DashboardViewModel
+    @ObservedObject var settingsViewModel = SettingsViewModel.shared
     
     // 0: Cash Out, 1: ROI, 2: P&L, 3: Portfolio Value, 4: Account Balance
     @State private var displayMode = 0
+    @State private var configuringPosition: Position?
     
     @AppStorage("appearanceMode") private var appearanceMode: String = "System"
 //    @AppStorage("appearanceMode") private var appearanceMode: String = "System"
@@ -98,10 +100,20 @@ struct DropdownView: View {
                             ForEach(displayedPositions) { position in
                                 VStack(spacing: 0) {
                                     HStack(spacing: 10) {
-                                        // Icon based on side
-                                        Image(systemName: position.side == "Yes" ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
-                                            .font(.system(size: 16))
-                                            .foregroundColor(position.side == "Yes" ? .green : .red)
+                                        // Bell Icon for Alerts
+                                        Button(action: {
+                                            settingsViewModel.toggleAlert(for: position.ticker)
+                                        }) {
+                                            let isEnabled = settingsViewModel.getAlertSettings(for: position.ticker).isEnabled
+                                            Image(systemName: isEnabled ? "bell.fill" : "bell")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(isEnabled ? .accentColor : .secondary.opacity(0.5))
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help(settingsViewModel.notificationsEnabled ? "Toggle Alerts" : "Enable notifications in Settings to use alerts")
+                                        .disabled(!settingsViewModel.notificationsEnabled)
+                                        
+
                                         
                                         VStack(alignment: .leading, spacing: 4) {
                                             Text(position.title ?? position.marketTicker)
@@ -135,6 +147,21 @@ struct DropdownView: View {
                                                     Text("Sell \(position.currentPrice, format: .currency(code: "USD"))")
                                                         .font(.system(size: 11))
                                                         .foregroundColor(.primary.opacity(0.65))
+                                                    
+                                                    if let sellURL = sellUrl(for: position) {
+                                                        Text("·")
+                                                            .font(.system(size: 11))
+                                                            .foregroundColor(.primary.opacity(0.4))
+                                                        
+                                                        Button(action: {
+                                                            NSWorkspace.shared.open(sellURL)
+                                                        }) {
+                                                            Text("Sell on Kalshi")
+                                                                .font(.system(size: 11, weight: .semibold))
+                                                        }
+                                                        .buttonStyle(.plain)
+                                                        .foregroundColor(.accentColor)
+                                                    }
                                                 }
                                             }
                                         }
@@ -165,7 +192,11 @@ struct DropdownView: View {
                                             }
                                         }
                                     }
-                                    
+                                    .contextMenu {
+                                        Button("Configure Alerts...") {
+                                            configuringPosition = position
+                                        }
+                                    }
                                     Divider()
                                         .padding(.leading, 38) // Indent divider to match text
                                         .opacity(0.12)
@@ -221,8 +252,11 @@ struct DropdownView: View {
             }
             .background(.ultraThinMaterial)
         }
-        .frame(width: 340)
+        .frame(width: 360)
         .background(.ultraThinMaterial) // Main background
+        .popover(item: $configuringPosition) { position in
+            PositionAlertConfigurationView(ticker: position.ticker, marketTitle: position.title ?? position.marketTicker)
+        }
     }
     
     // Helper functions for cleaner body
@@ -273,5 +307,58 @@ struct DropdownView: View {
     
     private func openSettings() {
         SettingsWindowManager.shared.open()
+    }
+    
+    private func sellUrl(for position: Position) -> URL? {
+        let side = position.side.lowercased()
+        let qty = abs(position.quantity)
+        
+        // Prefer the resolved market URL (markets/{series}/{slug}/{event}) and hint trade tab + sell side + qty.
+        if let marketUrl = position.marketUrl,
+           var components = URLComponents(url: marketUrl, resolvingAgainstBaseURL: false) {
+            var items = components.queryItems ?? []
+            items.append(URLQueryItem(name: "tab", value: "trade"))
+            items.append(URLQueryItem(name: "action", value: "sell"))
+            items.append(URLQueryItem(name: "side", value: side))
+            items.append(URLQueryItem(name: "quantity", value: "\(qty)"))
+            components.queryItems = items
+            return components.url
+        }
+        
+        // If we have enough metadata, build the markets path directly.
+        if let series = position.seriesTicker?.lowercased(),
+           let event = position.eventTicker?.lowercased(),
+           let seriesTitle = position.seriesTitle {
+            let slug = seriesTitle
+                .lowercased()
+                .replacingOccurrences(of: " ", with: "-")
+                .folding(options: .diacriticInsensitive, locale: .current)
+                .components(separatedBy: CharacterSet.alphanumerics.inverted.subtracting(.init(charactersIn: "-")))
+                .joined()
+            
+            var components = URLComponents()
+            components.scheme = "https"
+            components.host = "kalshi.com"
+            components.path = "/markets/\(series)/\(slug)/\(event)"
+            components.queryItems = [
+                URLQueryItem(name: "tab", value: "trade"),
+                URLQueryItem(name: "action", value: "sell"),
+                URLQueryItem(name: "side", value: side),
+                URLQueryItem(name: "quantity", value: "\(qty)")
+            ]
+            return components.url
+        }
+        
+        // Fallback to the trade route which typically opens the order form directly.
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "kalshi.com"
+        components.path = "/trade/\(position.marketTicker.lowercased())"
+        components.queryItems = [
+            URLQueryItem(name: "action", value: "sell"),
+            URLQueryItem(name: "side", value: side),
+            URLQueryItem(name: "quantity", value: "\(qty)")
+        ]
+        return components.url
     }
 }

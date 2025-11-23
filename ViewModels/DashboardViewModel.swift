@@ -174,6 +174,7 @@ class DashboardViewModel: ObservableObject {
                                                                             // Update position safely
                                                                             if let idx = self?.positions.firstIndex(where: { $0.ticker == position.ticker }) {
                                                                                 self?.positions[idx].marketUrl = url
+                                                                                self?.positions[idx].seriesTitle = series.title
                                                                             }
                                                                         }
                                                                         
@@ -242,15 +243,149 @@ class DashboardViewModel: ObservableObject {
     
     private var lastNotificationTime: Date?
     
+    // Track the last state of each position to prevent spamming notifications
+    // Key: Ticker, Value: State
+    private var positionAlertStates: [String: PositionAlertState] = [:]
+    
+    struct PositionAlertState {
+        var isAboveHighROI: Bool = false
+        var isBelowLowROI: Bool = false
+        var isAboveTargetProfit: Bool = false
+        var isAboveTargetPrice: Bool = false
+    }
+    
     private func checkThresholds() {
-        let notificationsEnabled = SettingsViewModel.shared.notificationsEnabled
+        let settingsVM = SettingsViewModel.shared
         
-        guard notificationsEnabled else { return }
+        // 1. Check Global Portfolio ROI (if notifications enabled globally)
+        if settingsVM.notificationsEnabled {
+            checkPortfolioThresholds()
+        }
         
+        // 2. Check Individual Positions
+        for position in positions {
+            let ticker = position.ticker
+            let settings = settingsVM.getAlertSettings(for: ticker)
+            
+            // Skip if alerts are disabled for this position
+            // Note: If global notifications are disabled, we still check if the USER explicitly enabled this position?
+            // Requirement: "If global notifications are disabled... Bell icons are shown but greyed out... non-interactive"
+            // This implies per-position alerts depend on the global master switch.
+            guard settingsVM.notificationsEnabled, settings.isEnabled else { continue }
+            
+            // Determine effective thresholds
+            let highROI: Double
+            let lowROI: Double
+            let targetProfit: Double?
+            let targetPrice: Double?
+            
+            if settings.useGlobal {
+                highROI = settingsVM.highROIThreshold / 100.0
+                lowROI = settingsVM.lowROIThreshold / 100.0
+                targetProfit = nil
+                targetPrice = nil
+            } else {
+                highROI = (settings.highROI ?? settingsVM.highROIThreshold) / 100.0
+                lowROI = (settings.lowROI ?? settingsVM.lowROIThreshold) / 100.0
+                targetProfit = settings.targetProfit
+                targetPrice = settings.targetPrice
+            }
+            
+            // Get or create state
+            var state = positionAlertStates[ticker] ?? PositionAlertState()
+            var shouldUpdateState = false
+            
+            // Check High ROI
+            if position.realizedROI >= highROI {
+                if !state.isAboveHighROI {
+                    sendNotification(
+                        title: "High ROI Alert: \(position.ticker) 🚀",
+                        body: "ROI hit \(position.realizedROI.formatted(.percent.precision(.fractionLength(1))))! Profit: \(position.realizedPnL.formatted(.currency(code: "USD")))"
+                    )
+                    state.isAboveHighROI = true
+                    shouldUpdateState = true
+                }
+            } else {
+                if state.isAboveHighROI {
+                    state.isAboveHighROI = false
+                    shouldUpdateState = true
+                }
+            }
+            
+            // Check Low ROI
+            if position.realizedROI <= lowROI {
+                if !state.isBelowLowROI {
+                    sendNotification(
+                        title: "Low ROI Alert: \(position.ticker) 📉",
+                        body: "ROI dropped to \(position.realizedROI.formatted(.percent.precision(.fractionLength(1)))). Profit: \(position.realizedPnL.formatted(.currency(code: "USD")))"
+                    )
+                    state.isBelowLowROI = true
+                    shouldUpdateState = true
+                }
+            } else {
+                if state.isBelowLowROI {
+                    state.isBelowLowROI = false
+                    shouldUpdateState = true
+                }
+            }
+            
+            // Check Target Profit
+            if let target = targetProfit {
+                if position.realizedPnL >= target {
+                    if !state.isAboveTargetProfit {
+                        sendNotification(
+                            title: "Profit Target Hit: \(position.ticker) 💰",
+                            body: "Profit reached \(position.realizedPnL.formatted(.currency(code: "USD")))! (Target: \(target.formatted(.currency(code: "USD"))))"
+                        )
+                        state.isAboveTargetProfit = true
+                        shouldUpdateState = true
+                    }
+                } else {
+                    if state.isAboveTargetProfit {
+                        state.isAboveTargetProfit = false
+                        shouldUpdateState = true
+                    }
+                }
+            }
+            
+            // Check Target Price
+            if let target = targetPrice {
+                let currentPrice = position.currentPrice
+                // Target price is usually in cents or dollars? Requirement says "Target Price (¢)".
+                // Let's assume input is in cents (integer) or dollars (double).
+                // If user inputs "50", is it $0.50?
+                // "Target Price (¢) – number field". So input 50 = 50 cents = $0.50.
+                // My position.currentPrice is in Dollars ($0.50).
+                // So I should compare position.currentPrice * 100 >= target.
+                
+                if (currentPrice * 100) >= target {
+                    if !state.isAboveTargetPrice {
+                        sendNotification(
+                            title: "Price Target Hit: \(position.ticker) 🎯",
+                            body: "Price reached \(currentPrice.formatted(.currency(code: "USD")))! (Target: \(target.formatted()))"
+                        )
+                        state.isAboveTargetPrice = true
+                        shouldUpdateState = true
+                    }
+                } else {
+                    if state.isAboveTargetPrice {
+                        state.isAboveTargetPrice = false
+                        shouldUpdateState = true
+                    }
+                }
+            }
+            
+            if shouldUpdateState {
+                positionAlertStates[ticker] = state
+            }
+        }
+    }
+    
+    private func checkPortfolioThresholds() {
         let highThreshold = SettingsViewModel.shared.highROIThreshold / 100.0
         let lowThreshold = SettingsViewModel.shared.lowROIThreshold / 100.0
         
-        // Debounce: Don't notify more than once every 5 minutes
+        // Debounce portfolio alerts
         if let lastTime = lastNotificationTime, Date().timeIntervalSince(lastTime) < 300 {
             return
         }
@@ -259,7 +394,6 @@ class DashboardViewModel: ObservableObject {
         var title = ""
         var body = ""
         
-        // Check overall portfolio ROI
         if overallROI >= highThreshold {
             shouldNotify = true
             title = "High Portfolio ROI 🚀"
@@ -268,23 +402,6 @@ class DashboardViewModel: ObservableObject {
             shouldNotify = true
             title = "Low Portfolio ROI 📉"
             body = "Your portfolio ROI has dropped to \(overallROI.formatted(.percent.precision(.fractionLength(1))))."
-        }
-        
-        // Check individual positions
-        if !shouldNotify {
-            for position in positions {
-                if position.realizedROI >= highThreshold {
-                    shouldNotify = true
-                    title = "High ROI Alert: \(position.ticker) 🚀"
-                    body = "ROI for \(position.ticker) hit \(position.realizedROI.formatted(.percent.precision(.fractionLength(1))))! Cash Out: \(position.netProceedsAfterFees.formatted(.currency(code: "USD")))"
-                    break // Notify for at least one
-                } else if position.realizedROI <= lowThreshold {
-                    shouldNotify = true
-                    title = "Low ROI Alert: \(position.ticker) 📉"
-                    body = "ROI for \(position.ticker) dropped to \(position.realizedROI.formatted(.percent.precision(.fractionLength(1)) ))."
-                    break
-                }
-            }
         }
         
         if shouldNotify {

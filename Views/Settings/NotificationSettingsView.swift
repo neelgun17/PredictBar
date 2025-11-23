@@ -3,6 +3,9 @@ import SwiftUI
 struct NotificationSettingsView: View {
     @ObservedObject var viewModel = SettingsViewModel.shared
     
+    @State private var highROIText: String = ""
+    @State private var lowROIText: String = ""
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Alerts")
@@ -16,6 +19,10 @@ struct NotificationSettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary.opacity(0.7))
                         .padding(.leading, 24) // Indent to align with text
+                    
+                    Toggle("Enable alerts automatically for new positions", isOn: $viewModel.autoEnableNewAlerts)
+                        .padding(.leading, 24)
+                        .disabled(!viewModel.notificationsEnabled)
                 }
                 .padding(.bottom, 8)
                 
@@ -23,19 +30,29 @@ struct NotificationSettingsView: View {
                     HStack {
                         Text("High ROI (%)")
                             .frame(width: 100, alignment: .leading)
-                        TextField("20", value: $viewModel.highROIThreshold, format: .number)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 80)
-                            .disabled(!viewModel.notificationsEnabled)
+                        TextField("20", text: $highROIText)
+                        .onChange(of: highROIText) { newValue in
+                            if let value = Double(newValue) {
+                                viewModel.highROIThreshold = value
+                            }
+                        }
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                        .disabled(!viewModel.notificationsEnabled)
                     }
                     
                     HStack {
                         Text("Low ROI (%)")
                             .frame(width: 100, alignment: .leading)
-                        TextField("-20", value: $viewModel.lowROIThreshold, format: .number)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 80)
-                            .disabled(!viewModel.notificationsEnabled)
+                        TextField("-20", text: $lowROIText)
+                        .onChange(of: lowROIText) { newValue in
+                            if let value = Double(newValue) {
+                                viewModel.lowROIThreshold = value
+                            }
+                        }
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                        .disabled(!viewModel.notificationsEnabled)
                     }
                 }
                 .padding(.leading, 24)
@@ -47,5 +64,9 @@ struct NotificationSettingsView: View {
         .padding(.top, 20)
         .padding(.leading, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear {
+            highROIText = String(format: "%.1f", viewModel.highROIThreshold)
+            lowROIText = String(format: "%.1f", viewModel.lowROIThreshold)
+        }
     }
 }
