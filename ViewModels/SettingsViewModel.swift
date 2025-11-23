@@ -40,7 +40,7 @@ class SettingsViewModel: ObservableObject {
     private init() {
         let defaults = UserDefaults.standard
         
-        self.menuBarMetric = defaults.string(forKey: "menuBarMetric") ?? "ROI"
+        self.menuBarMetric = defaults.string(forKey: "menuBarMetric") ?? "Cash Out"
         self.appearanceMode = defaults.string(forKey: "appearanceMode") ?? "System"
         self.compactMode = defaults.bool(forKey: "compactMode")
         self.notificationsEnabled = defaults.bool(forKey: "notificationsEnabled")

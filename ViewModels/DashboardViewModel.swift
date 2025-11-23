@@ -4,6 +4,7 @@ import UserNotifications
 
 @MainActor
 class DashboardViewModel: ObservableObject {
+    @Published var totalCashOutValue: Double = 0.0
     @Published var overallROI: Double = 0.0
     @Published var overallPnL: Double = 0.0
     @Published var portfolioValue: Double = 0.0
@@ -206,6 +207,7 @@ class DashboardViewModel: ObservableObject {
         let totalCost = positions.reduce(0.0) { $0 + $1.totalCostBasis }
         let totalNetProceeds = positions.reduce(0.0) { $0 + $1.netProceedsAfterFees }
         
+        totalCashOutValue = totalNetProceeds
         overallPnL = totalNetProceeds - totalCost
         
         if totalCost > 0 {
@@ -223,6 +225,8 @@ class DashboardViewModel: ObservableObject {
         let metric = SettingsViewModel.shared.menuBarMetric
         
         switch metric {
+        case "Cash Out":
+            menuBarText = totalCashOutValue.formatted(.currency(code: "USD"))
         case "ROI":
             menuBarText = overallROI.formatted(.percent.precision(.fractionLength(1)))
         case "PnL":
@@ -232,7 +236,7 @@ class DashboardViewModel: ObservableObject {
         case "Balance":
             menuBarText = accountBalance.formatted(.currency(code: "USD"))
         default:
-            menuBarText = ""
+            menuBarText = totalCashOutValue.formatted(.currency(code: "USD"))
         }
     }
     
@@ -255,14 +259,32 @@ class DashboardViewModel: ObservableObject {
         var title = ""
         var body = ""
         
+        // Check overall portfolio ROI
         if overallROI >= highThreshold {
             shouldNotify = true
-            title = "High ROI Alert 🚀"
+            title = "High Portfolio ROI 🚀"
             body = "Your portfolio ROI is up to \(overallROI.formatted(.percent.precision(.fractionLength(1))))!"
         } else if overallROI <= lowThreshold {
             shouldNotify = true
-            title = "Low ROI Alert 📉"
+            title = "Low Portfolio ROI 📉"
             body = "Your portfolio ROI has dropped to \(overallROI.formatted(.percent.precision(.fractionLength(1))))."
+        }
+        
+        // Check individual positions
+        if !shouldNotify {
+            for position in positions {
+                if position.realizedROI >= highThreshold {
+                    shouldNotify = true
+                    title = "High ROI Alert: \(position.ticker) 🚀"
+                    body = "ROI for \(position.ticker) hit \(position.realizedROI.formatted(.percent.precision(.fractionLength(1))))! Cash Out: \(position.netProceedsAfterFees.formatted(.currency(code: "USD")))"
+                    break // Notify for at least one
+                } else if position.realizedROI <= lowThreshold {
+                    shouldNotify = true
+                    title = "Low ROI Alert: \(position.ticker) 📉"
+                    body = "ROI for \(position.ticker) dropped to \(position.realizedROI.formatted(.percent.precision(.fractionLength(1)) ))."
+                    break
+                }
+            }
         }
         
         if shouldNotify {

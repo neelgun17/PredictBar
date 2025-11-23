@@ -3,7 +3,7 @@ import SwiftUI
 struct DropdownView: View {
     @ObservedObject var viewModel: DashboardViewModel
     
-    // 0: ROI, 1: P&L, 2: Portfolio Value, 3: Account Balance
+    // 0: Cash Out, 1: ROI, 2: P&L, 3: Portfolio Value, 4: Account Balance
     @State private var displayMode = 0
     
     @AppStorage("appearanceMode") private var appearanceMode: String = "System"
@@ -66,8 +66,8 @@ struct DropdownView: View {
                     } else {
                         Button(action: openSettings) {
                             Image(systemName: "gearshape.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(.secondary)
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
                         }
                         .buttonStyle(.plain)
                         .help("Settings")
@@ -100,12 +100,18 @@ struct DropdownView: View {
                 .padding(.vertical, 24)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("POSITIONS")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.secondary.opacity(0.8))
-                        .padding(.horizontal, 12)
-                        .padding(.top, 8)
-                        .padding(.bottom, 4)
+                    HStack {
+                        Text("POSITIONS")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.secondary.opacity(0.8))
+                        Spacer()
+                        Text("PnL")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.secondary.opacity(0.8))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
                     
                     ScrollView {
                         VStack(spacing: 0) {
@@ -127,11 +133,25 @@ struct DropdownView: View {
                                                     .font(.system(size: 11))
                                                     .foregroundColor(.secondary)
                                                 
-                                                Text("•")
-                                                    .font(.system(size: 8))
-                                                    .foregroundColor(.secondary.opacity(0.5))
+                                                Text("·")
+                                                    .font(.system(size: 11))
+                                                    .foregroundColor(.secondary)
                                                 
-                                                Text("\(position.quantity) @ \(position.entryPrice, format: .currency(code: "USD"))")
+                                                Text("Qty \(position.quantity)")
+                                                    .font(.system(size: 11))
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            
+                                            HStack(spacing: 4) {
+                                                Text("Avg \(position.entryPrice, format: .currency(code: "USD"))")
+                                                    .font(.system(size: 11))
+                                                    .foregroundColor(.secondary)
+                                                
+                                                Text("·")
+                                                    .font(.system(size: 11))
+                                                    .foregroundColor(.secondary)
+                                                
+                                                Text("Sell \(position.currentPrice, format: .currency(code: "USD"))")
                                                     .font(.system(size: 11))
                                                     .foregroundColor(.secondary)
                                             }
@@ -139,21 +159,11 @@ struct DropdownView: View {
                                         
                                         Spacer(minLength: 6)
                                         
-                                        if !position.history.isEmpty {
-                                            SparklineView(data: position.history, color: position.realizedROI >= 0 ? .green : .red)
-                                                .frame(width: 70, height: 28)
-                                        } else {
-                                            SparklineView(data: [0.0, 0.0], color: .secondary)
-                                                .frame(width: 70, height: 28)
-                                                .opacity(0.25)
-                                        }
-                                        
-                                        Spacer(minLength: 6)
-                                        
                                         VStack(alignment: .trailing, spacing: 2) {
-                                            Text(position.currentPrice, format: .currency(code: "USD"))
+                                            Text(position.realizedPnL, format: .currency(code: "USD").sign(strategy: .always()))
                                                 .font(.system(size: 13, weight: .semibold))
                                                 .monospacedDigit()
+                                                .foregroundColor(position.realizedPnL >= 0 ? .green : .red)
                                             
                                             Text(position.realizedROI.formatted(.percent.precision(.fractionLength(1))))
                                                 .font(.system(.caption, design: .monospaced))
@@ -223,51 +233,54 @@ struct DropdownView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        displayMode = (displayMode + 1) % 4
+                        displayMode = (displayMode + 1) % 5
                     }
                 }
             }
             .background(.ultraThinMaterial)
         }
-        .frame(width: 320)
+        .frame(width: 380)
         .background(.ultraThinMaterial) // Main background
     }
     
     // Helper functions for cleaner body
     private func getIconForMode(_ mode: Int) -> String {
         switch mode {
-        case 0: return "percent"
-        case 1: return "chart.line.uptrend.xyaxis"
-        case 2: return "briefcase.fill"
-        case 3: return "banknote.fill"
+        case 0: return "dollarsign.circle.fill"
+        case 1: return "percent"
+        case 2: return "chart.line.uptrend.xyaxis"
+        case 3: return "briefcase.fill"
+        case 4: return "banknote.fill"
         default: return "circle"
         }
     }
     
     private func getTitleForMode(_ mode: Int) -> String {
         switch mode {
-        case 0: return "Total ROI"
-        case 1: return "Total P&L"
-        case 2: return "Portfolio Value"
-        case 3: return "Available Balance"
+        case 0: return "Total Cash Out"
+        case 1: return "Total ROI"
+        case 2: return "Total P&L"
+        case 3: return "Portfolio Value"
+        case 4: return "Available Balance"
         default: return ""
         }
     }
     
     private func getValueForMode(_ mode: Int) -> String {
         switch mode {
-        case 0: return viewModel.overallROI.formatted(.percent.precision(.fractionLength(2)))
-        case 1: return viewModel.overallPnL.formatted(.currency(code: "USD"))
-        case 2: return viewModel.portfolioValue.formatted(.currency(code: "USD"))
-        case 3: return viewModel.accountBalance.formatted(.currency(code: "USD"))
+        case 0: return viewModel.totalCashOutValue.formatted(.currency(code: "USD"))
+        case 1: return viewModel.overallROI.formatted(.percent.precision(.fractionLength(2)))
+        case 2: return viewModel.overallPnL.formatted(.currency(code: "USD"))
+        case 3: return viewModel.portfolioValue.formatted(.currency(code: "USD"))
+        case 4: return viewModel.accountBalance.formatted(.currency(code: "USD"))
         default: return ""
         }
     }
     
     private func getColorForMode(_ mode: Int) -> Color {
         switch mode {
-        case 0: return viewModel.overallROI >= 0 ? .green : .red
-        case 1: return viewModel.overallPnL >= 0 ? .green : .red
+        case 1: return viewModel.overallROI >= 0 ? .green : .red
+        case 2: return viewModel.overallPnL >= 0 ? .green : .red
         default: return .primary
         }
     }
