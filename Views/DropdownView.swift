@@ -45,33 +45,13 @@ struct DropdownView: View {
                     .buttonStyle(.plain)
                     .help("Refresh")
                     
-                    if #available(macOS 14.0, *) {
-                        if isRunningFromAppBundle {
-                            SettingsLink {
-                                Image(systemName: "gearshape.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .help("Settings")
-                        } else {
-                            Button(action: openSettings) {
-                                Image(systemName: "gearshape.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .help("Settings")
-                        }
-                    } else {
-                        Button(action: openSettings) {
-                            Image(systemName: "gearshape.fill")
+                    Button(action: openSettings) {
+                        Image(systemName: "gearshape.fill")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Settings")
                     }
+                    .buttonStyle(.plain)
+                    .help("Settings")
                 }
             }
             .padding(.horizontal, 12)
@@ -123,37 +103,39 @@ struct DropdownView: View {
                                             .font(.system(size: 16))
                                             .foregroundColor(position.side == "Yes" ? .green : .red)
                                         
-                                        VStack(alignment: .leading, spacing: 2) {
+                                        VStack(alignment: .leading, spacing: 4) {
                                             Text(position.title ?? position.marketTicker)
                                                 .font(.system(size: 13, weight: .medium))
                                                 .lineLimit(1)
                                             
-                                            HStack(spacing: 4) {
-                                                Text(position.subtitle ?? position.side)
-                                                    .font(.system(size: 11))
-                                                    .foregroundColor(.secondary)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                HStack(spacing: 4) {
+                                                    Text(position.subtitle ?? position.side)
+                                                        .font(.system(size: 11))
+                                                        .foregroundColor(.primary.opacity(0.65))
+                                                    
+                                                    Text("·")
+                                                        .font(.system(size: 11))
+                                                        .foregroundColor(.primary.opacity(0.4))
+                                                    
+                                                    Text("Qty: \(position.quantity)")
+                                                        .font(.system(size: 11))
+                                                        .foregroundColor(.primary.opacity(0.65))
+                                                }
                                                 
-                                                Text("·")
-                                                    .font(.system(size: 11))
-                                                    .foregroundColor(.secondary)
-                                                
-                                                Text("Qty \(position.quantity)")
-                                                    .font(.system(size: 11))
-                                                    .foregroundColor(.secondary)
-                                            }
-                                            
-                                            HStack(spacing: 4) {
-                                                Text("Avg \(position.entryPrice, format: .currency(code: "USD"))")
-                                                    .font(.system(size: 11))
-                                                    .foregroundColor(.secondary)
-                                                
-                                                Text("·")
-                                                    .font(.system(size: 11))
-                                                    .foregroundColor(.secondary)
-                                                
-                                                Text("Sell \(position.currentPrice, format: .currency(code: "USD"))")
-                                                    .font(.system(size: 11))
-                                                    .foregroundColor(.secondary)
+                                                HStack(spacing: 4) {
+                                                    Text("Avg \(position.entryPrice, format: .currency(code: "USD"))")
+                                                        .font(.system(size: 11))
+                                                        .foregroundColor(.primary.opacity(0.65))
+                                                    
+                                                    Text("·")
+                                                        .font(.system(size: 11))
+                                                        .foregroundColor(.primary.opacity(0.4))
+                                                    
+                                                    Text("Sell \(position.currentPrice, format: .currency(code: "USD"))")
+                                                        .font(.system(size: 11))
+                                                        .foregroundColor(.primary.opacity(0.65))
+                                                }
                                             }
                                         }
                                         
@@ -161,13 +143,13 @@ struct DropdownView: View {
                                         
                                         VStack(alignment: .trailing, spacing: 2) {
                                             Text(position.realizedPnL, format: .currency(code: "USD").sign(strategy: .always()))
-                                                .font(.system(size: 13, weight: .semibold))
+                                                .font(.system(size: 13, weight: .bold))
                                                 .monospacedDigit()
-                                                .foregroundColor(position.realizedPnL >= 0 ? .green : .red)
+                                                .foregroundColor(abs(position.realizedPnL) < 0.01 ? .secondary : (position.realizedPnL > 0 ? .green : .red))
                                             
                                             Text(position.realizedROI.formatted(.percent.precision(.fractionLength(1))))
-                                                .font(.system(.caption, design: .monospaced))
-                                                .foregroundColor(position.realizedROI >= 0 ? .green : .red)
+                                                .font(.system(size: 11, weight: .medium))
+                                                .foregroundColor((abs(position.realizedPnL) < 0.01 ? .secondary : (position.realizedPnL > 0 ? Color.green : Color.red)).opacity(0.8))
                                                 .monospacedDigit()
                                         }
                                     }
@@ -186,12 +168,12 @@ struct DropdownView: View {
                                     
                                     Divider()
                                         .padding(.leading, 38) // Indent divider to match text
-                                        .opacity(0.3)
+                                        .opacity(0.12)
                                 }
                             }
                         }
                     }
-                    .frame(maxHeight: 300)
+                    .frame(maxHeight: 320)
                 }
             }
             
@@ -239,7 +221,7 @@ struct DropdownView: View {
             }
             .background(.ultraThinMaterial)
         }
-        .frame(width: 380)
+        .frame(width: 340)
         .background(.ultraThinMaterial) // Main background
     }
     
@@ -290,18 +272,6 @@ struct DropdownView: View {
     }
     
     private func openSettings() {
-        // If we're not in a bundled app (e.g., `swift run`), show our manual settings window to avoid the SettingsLink warning.
-        guard isRunningFromAppBundle else {
-            SettingsWindowManager.shared.open()
-            return
-        }
-        
-        // Try to trigger the SwiftUI Settings scene; fall back to manual window if not handled.
-        let handled = NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-            || NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-        
-        if !handled {
-            SettingsWindowManager.shared.open()
-        }
+        SettingsWindowManager.shared.open()
     }
 }

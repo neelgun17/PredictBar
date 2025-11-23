@@ -23,7 +23,7 @@ struct SettingsView: View {
                     Label("API", systemImage: "network")
                 }
         }
-        .frame(width: 450, height: 250)
+        .frame(width: 450, height: 260)
         .padding()
         .onAppear {
             NSApp.activate(ignoringOtherApps: true)

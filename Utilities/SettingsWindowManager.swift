@@ -18,7 +18,7 @@ final class SettingsWindowManager {
             )
             
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 450, height: 270),
+                contentRect: NSRect(x: 0, y: 0, width: 450, height: 260),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered,
                 defer: false
@@ -32,6 +32,7 @@ final class SettingsWindowManager {
         }
         
         window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
     }
 }
