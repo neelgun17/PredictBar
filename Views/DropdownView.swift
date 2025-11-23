@@ -7,6 +7,7 @@ struct DropdownView: View {
     // 0: Cash Out, 1: ROI, 2: P&L, 3: Portfolio Value, 4: Account Balance
     @State private var displayMode = 0
     @State private var configuringPosition: Position?
+    @State private var hoveredTicker: String?
     
     @AppStorage("appearanceMode") private var appearanceMode: String = "System"
 //    @AppStorage("appearanceMode") private var appearanceMode: String = "System"
@@ -116,9 +117,25 @@ struct DropdownView: View {
 
                                         
                                         VStack(alignment: .leading, spacing: 4) {
-                                            Text(position.title ?? position.marketTicker)
-                                                .font(.system(size: 13, weight: .medium))
-                                                .lineLimit(1)
+                                            HStack(spacing: 4) {
+                                                Text(position.title ?? position.marketTicker)
+                                                    .font(.system(size: 13, weight: .medium))
+                                                    .lineLimit(1)
+                                                if hoveredTicker == position.ticker {
+                                                    Image(systemName: "arrow.up.right")
+                                                        .font(.system(size: 10, weight: .semibold))
+                                                        .foregroundColor(.secondary)
+                                                        .transition(.opacity)
+                                                }
+                                            }
+                                            .onHover { hovering in
+                                                if hovering {
+                                                    hoveredTicker = position.ticker
+                                                } else if hoveredTicker == position.ticker {
+                                                    hoveredTicker = nil
+                                                }
+                                            }
+                                            .animation(.easeInOut(duration: 0.15), value: hoveredTicker == position.ticker)
                                             
                                             VStack(alignment: .leading, spacing: 2) {
                                                 HStack(spacing: 4) {
