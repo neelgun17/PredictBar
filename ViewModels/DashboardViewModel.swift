@@ -216,6 +216,7 @@ class DashboardViewModel: ObservableObject {
         
         updateMenuBarText()
         checkThresholds()
+        updateWidgetData()
     }
     
     func updateMenuBarText() {
@@ -307,5 +308,15 @@ class DashboardViewModel: ObservableObject {
             positions[index] = position
             calculateTotals()
         }
+    }
+    
+    // MARK: - Widget Data Update
+    
+    /// Updates the widget's shared data store with current portfolio snapshot
+    private func updateWidgetData() {
+        // Take top 5 positions for the widget
+        let topPositions = positions.prefix(5).map { WidgetPosition(from: $0) }
+        let snapshot = WidgetPortfolioSnapshot(positions: Array(topPositions))
+        WidgetDataStore.shared.saveSnapshot(snapshot)
     }
 }
