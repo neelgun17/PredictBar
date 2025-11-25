@@ -5,6 +5,8 @@ struct NotificationSettingsView: View {
     
     @State private var highROIText: String = ""
     @State private var lowROIText: String = ""
+    @State private var highROIError: String? = nil
+    @State private var lowROIError: String? = nil
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -26,33 +28,55 @@ struct NotificationSettingsView: View {
                 }
                 .padding(.bottom, 8)
                 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("High ROI (%)")
-                            .frame(width: 100, alignment: .leading)
-                        TextField("20", text: $highROIText)
-                        .onChange(of: highROIText) { newValue in
-                            if let value = Double(newValue) {
-                                viewModel.highROIThreshold = value
+                VStack(alignment: .leading, spacing: 12) {
+                    // High ROI Input
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("High ROI (%)")
+                                .frame(width: 100, alignment: .leading)
+                            TextField("20", text: $highROIText)
+                                .onChange(of: highROIText) { newValue in
+                                    validateHighROI(newValue)
+                                }
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 80)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .stroke(Color.red, lineWidth: highROIError != nil ? 1 : 0)
+                                )
+                                .disabled(!viewModel.notificationsEnabled)
+                            
+                            if let error = highROIError {
+                                Text(error)
+                                    .font(.caption)
+                                    .foregroundColor(.red)
                             }
                         }
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 80)
-                        .disabled(!viewModel.notificationsEnabled)
                     }
                     
-                    HStack {
-                        Text("Low ROI (%)")
-                            .frame(width: 100, alignment: .leading)
-                        TextField("-20", text: $lowROIText)
-                        .onChange(of: lowROIText) { newValue in
-                            if let value = Double(newValue) {
-                                viewModel.lowROIThreshold = value
+                    // Low ROI Input
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Low ROI (%)")
+                                .frame(width: 100, alignment: .leading)
+                            TextField("-20", text: $lowROIText)
+                                .onChange(of: lowROIText) { newValue in
+                                    validateLowROI(newValue)
+                                }
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 80)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .stroke(Color.red, lineWidth: lowROIError != nil ? 1 : 0)
+                                )
+                                .disabled(!viewModel.notificationsEnabled)
+                            
+                            if let error = lowROIError {
+                                Text(error)
+                                    .font(.caption)
+                                    .foregroundColor(.red)
                             }
                         }
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 80)
-                        .disabled(!viewModel.notificationsEnabled)
                     }
                 }
                 .padding(.leading, 24)
@@ -67,6 +91,34 @@ struct NotificationSettingsView: View {
         .onAppear {
             highROIText = String(format: "%.1f", viewModel.highROIThreshold)
             lowROIText = String(format: "%.1f", viewModel.lowROIThreshold)
+        }
+    }
+    
+    private func validateHighROI(_ value: String) {
+        guard let doubleValue = Double(value) else {
+            highROIError = "Invalid number"
+            return
+        }
+        
+        if doubleValue < 1 || doubleValue > 10000 {
+            highROIError = "Must be 1% - 10,000%"
+        } else {
+            highROIError = nil
+            viewModel.highROIThreshold = doubleValue
+        }
+    }
+    
+    private func validateLowROI(_ value: String) {
+        guard let doubleValue = Double(value) else {
+            lowROIError = "Invalid number"
+            return
+        }
+        
+        if doubleValue < -100 || doubleValue > -1 {
+            lowROIError = "Must be -100% - -1%"
+        } else {
+            lowROIError = nil
+            viewModel.lowROIThreshold = doubleValue
         }
     }
 }

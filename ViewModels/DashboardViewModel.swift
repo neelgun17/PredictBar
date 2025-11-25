@@ -142,8 +142,8 @@ class DashboardViewModel: ObservableObject {
                                         updatedPosition?.title = market.title
                                         updatedPosition?.status = market.status
                                         
-                                        // Filter out settled/finalized positions
-                                        if let status = market.status, (status == "finalized" || status == "settled") {
+                                        // Filter out closed/settled/finalized/determined/pending positions (User wants only live events)
+                                        if let status = market.status, (status == "finalized" || status == "settled" || status == "closed" || status == "determined" || status == "pending") {
                                             self?.positions.remove(at: currentIdx)
                                             self?.calculateTotals()
                                             return
@@ -158,19 +158,37 @@ class DashboardViewModel: ObservableObject {
                                         
                                         updatedPosition?.eventTicker = market.eventTicker
                                         
-                                        // Update price to the executable sell price (best current bid for this side)
+                                        // Update price logic
+                                        // If market is active, use the best available bid (executable sell price)
+                                        // If market is closed/determined, use lastPrice because bids are likely pulled (0.0)
+                                        let isActive = (market.status == "active")
+                                        
                                         let yesBid = market.yesBid.map { Double($0) / 100.0 }
                                         let noBid = market.noBid.map { Double($0) / 100.0 }
                                         let yesAsk = market.yesAsk.map { Double($0) / 100.0 }
                                         let lastPrice = market.lastPrice.map { Double($0) / 100.0 }
                                         
-                                        if let executable = updatedPosition?.executableSellPrice(
-                                            yesBid: yesBid,
-                                            noBid: noBid,
-                                            yesAsk: yesAsk,
-                                            lastPrice: lastPrice
-                                        ) {
-                                            updatedPosition?.currentPrice = executable
+                                        if !isActive, let last = lastPrice, last > 0 {
+                                            // Market is closed/settling, trust the last trade price
+                                            updatedPosition?.currentPrice = last
+                                        } else {
+                                            // Market is active (or lastPrice is missing), use executable bid
+                                            if let executable = updatedPosition?.executableSellPrice(
+                                                yesBid: yesBid,
+                                                noBid: noBid,
+                                                yesAsk: yesAsk,
+                                                lastPrice: lastPrice
+                                            ) {
+                                                updatedPosition?.currentPrice = executable
+                                            }
+                                        }
+                                        
+                                        // Set fallback URL immediately using series ticker (if available)
+                                        if let seriesTicker = market.seriesTicker {
+                                            updatedPosition?.seriesTicker = seriesTicker
+                                            if let url = URL(string: "https://kalshi.com/markets/\(seriesTicker.lowercased())") {
+                                                updatedPosition?.marketUrl = url
+                                            }
                                         }
                                         
                                         // Save back to the array
@@ -325,6 +343,9 @@ class DashboardViewModel: ObservableObject {
             let targetProfit = settings.targetProfit
             let targetPrice = settings.targetPrice
             
+            // Skip if price hasn't loaded yet (default is 0.0)
+            if position.currentPrice == 0 { continue }
+            
             let newROI = position.realizedROI * 100.0
             
             handleAlerts(for: &position, newROI: newROI, highThreshold: highThreshold, lowThreshold: lowThreshold, targetProfit: targetProfit, targetPrice: targetPrice)
@@ -344,25 +365,48 @@ class DashboardViewModel: ObservableObject {
         
         var newState: Position.ROIState = currentState
         
+        // Hysteresis Buffer: 3%
+        // Prevents "flapping" alerts when ROI hovers near the threshold.
+        // You must drop 3% below the High threshold (or rise 3% above Low) to reset to Neutral.
+        let buffer = 3.0
+        
         if newROI >= highThreshold {
             newState = .high
         } else if newROI <= lowThreshold {
             newState = .low
         } else {
-            newState = .neutral
+            // We are in the "middle" zone (between Low and High thresholds)
+            
+            if currentState == .high {
+                // Only reset to Neutral if we drop significantly below the threshold
+                if newROI < (highThreshold - buffer) {
+                    newState = .neutral
+                } else {
+                    newState = .high // Maintain High state (hysteresis)
+                }
+            } else if currentState == .low {
+                // Only reset to Neutral if we rise significantly above the threshold
+                if newROI > (lowThreshold + buffer) {
+                    newState = .neutral
+                } else {
+                    newState = .low // Maintain Low state (hysteresis)
+                }
+            } else {
+                newState = .neutral
+            }
         }
         
         // Check transitions
         if currentState == .neutral && newState == .high {
             sendNotification(
-                title: "High ROI Alert: \(position.ticker) 🚀",
-                body: "High ROI hit: \(newROI.formatted(.percent.precision(.fractionLength(1)))) — Profit: \(position.realizedPnL.formatted(.currency(code: "USD"))) (Sell @ \(position.currentPrice.formatted(.currency(code: "USD"))))",
+                title: "High ROI Alert: \(position.title ?? position.ticker) 🚀",
+                body: "High ROI hit: \(position.realizedROI.formatted(.percent.precision(.fractionLength(1)))) — Profit: \(position.realizedPnL.formatted(.currency(code: "USD"))) (Sell @ \(position.currentPrice.formatted(.currency(code: "USD"))))",
                 url: position.marketUrl
             )
         } else if currentState == .neutral && newState == .low {
             sendNotification(
-                title: "Low ROI Alert: \(position.ticker) 📉",
-                body: "Low ROI hit: \(newROI.formatted(.percent.precision(.fractionLength(1)))) — Profit: \(position.realizedPnL.formatted(.currency(code: "USD"))) (Sell @ \(position.currentPrice.formatted(.currency(code: "USD"))))",
+                title: "Low ROI Alert: \(position.title ?? position.ticker) 📉",
+                body: "Low ROI hit: \(position.realizedROI.formatted(.percent.precision(.fractionLength(1)))) — Profit: \(position.realizedPnL.formatted(.currency(code: "USD"))) (Sell @ \(position.currentPrice.formatted(.currency(code: "USD"))))",
                 url: position.marketUrl
             )
         }
@@ -377,7 +421,7 @@ class DashboardViewModel: ObservableObject {
              if position.realizedPnL >= target {
                  if !state.isAboveTargetProfit {
                      sendNotification(
-                         title: "Profit Target Hit: \(position.ticker) 💰",
+                         title: "Profit Target Hit: \(position.title ?? position.ticker) 💰",
                          body: "Profit reached \(position.realizedPnL.formatted(.currency(code: "USD")))! (Target: \(target.formatted(.currency(code: "USD"))))",
                          url: position.marketUrl
                      )
@@ -401,7 +445,7 @@ class DashboardViewModel: ObservableObject {
                  
                  if !state.isAboveTargetPrice {
                      sendNotification(
-                         title: "Price Target Hit: \(position.ticker) 🎯",
+                         title: "Price Target Hit: \(position.title ?? position.ticker) 🎯",
                          body: "Price reached \(currentPrice.formatted(.currency(code: "USD")))! (Target: \(target.formatted())¢)",
                          url: position.marketUrl
                      )
@@ -422,28 +466,45 @@ class DashboardViewModel: ObservableObject {
         let highThreshold = SettingsViewModel.shared.highROIThreshold / 100.0
         let lowThreshold = SettingsViewModel.shared.lowROIThreshold / 100.0
         
-        // Debounce portfolio alerts
-        if let lastTime = lastNotificationTime, Date().timeIntervalSince(lastTime) < 300 {
-            return
-        }
-        
         var shouldNotify = false
         var title = ""
         var body = ""
         
+        let defaults = UserDefaults.standard
+        let calendar = Calendar.current
+        
+        // Skip alerts if we have positions but they haven't loaded prices yet (avoid false -100% ROI)
+        if !positions.isEmpty && positions.contains(where: { $0.currentPrice == 0 }) {
+            return
+        }
+        
+        // Check High Threshold
         if overallROI >= highThreshold {
-            shouldNotify = true
-            title = "High Portfolio ROI 🚀"
-            body = "Your portfolio ROI is up to \(overallROI.formatted(.percent.precision(.fractionLength(1))))!"
-        } else if overallROI <= lowThreshold {
-            shouldNotify = true
-            title = "Low Portfolio ROI 📉"
-            body = "Your portfolio ROI has dropped to \(overallROI.formatted(.percent.precision(.fractionLength(1))))."
+            let lastHighDate = defaults.object(forKey: "lastPortfolioHighAlertDate") as? Date
+            
+            // Alert if never alerted, or if last alert was not today
+            if lastHighDate == nil || !calendar.isDateInToday(lastHighDate!) {
+                shouldNotify = true
+                title = "High Portfolio ROI 🚀"
+                body = "Your portfolio ROI is up to \(overallROI.formatted(.percent.precision(.fractionLength(1))))!"
+                defaults.set(Date(), forKey: "lastPortfolioHighAlertDate")
+            }
+        } 
+        // Check Low Threshold
+        else if overallROI <= lowThreshold {
+            let lastLowDate = defaults.object(forKey: "lastPortfolioLowAlertDate") as? Date
+            
+            // Alert if never alerted, or if last alert was not today
+            if lastLowDate == nil || !calendar.isDateInToday(lastLowDate!) {
+                shouldNotify = true
+                title = "Low Portfolio ROI 📉"
+                body = "Your portfolio ROI has dropped to \(overallROI.formatted(.percent.precision(.fractionLength(1))))."
+                defaults.set(Date(), forKey: "lastPortfolioLowAlertDate")
+            }
         }
         
         if shouldNotify {
             sendNotification(title: title, body: body)
-            lastNotificationTime = Date()
         }
     }
     
