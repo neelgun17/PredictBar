@@ -97,6 +97,7 @@ class DashboardViewModel: ObservableObject {
                             merged.seriesTitle = existing.seriesTitle
                             merged.status = existing.status
                             merged.lastROI = existing.lastROI
+                            merged.previousROIState = existing.previousROIState
                             return merged
                         }
                         return newPos
@@ -306,97 +307,96 @@ class DashboardViewModel: ObservableObject {
             let targetPrice = settings.targetPrice
             
             let newROI = position.realizedROI * 100.0
-            let oldROI = position.lastROI ?? newROI // First run: assume no change
             
-            handleAlerts(for: &position, oldROI: oldROI, newROI: newROI, highThreshold: highThreshold, lowThreshold: lowThreshold, targetProfit: targetProfit, targetPrice: targetPrice)
+            handleAlerts(for: &position, newROI: newROI, highThreshold: highThreshold, lowThreshold: lowThreshold, targetProfit: targetProfit, targetPrice: targetPrice)
             
-            // Update lastROI
+            // Update lastROI (still useful for debugging or other logic, but state drives alerts now)
             position.lastROI = newROI
             positions[index] = position
         }
     }
     
-    private func handleAlerts(for position: inout Position, oldROI: Double, newROI: Double, highThreshold: Double, lowThreshold: Double, targetProfit: Double?, targetPrice: Double?) {
-        var shouldUpdateState = false
+    private func handleAlerts(for position: inout Position, newROI: Double, highThreshold: Double, lowThreshold: Double, targetProfit: Double?, targetPrice: Double?) {
+        var currentState = position.previousROIState
         
-        // Check High ROI
-        // Trigger if we crossed ABOVE the threshold (old < high && new >= high)
-        if oldROI < highThreshold && newROI >= highThreshold {
+        // Determine new state based on thresholds
+        // Note: We use a hysteresis or simple transition. 
+        // Requirement: "fire a notification when transitioning neutral→high or neutral→low, and reset when back in neutral"
+        
+        var newState: Position.ROIState = currentState
+        
+        if newROI >= highThreshold {
+            newState = .high
+        } else if newROI <= lowThreshold {
+            newState = .low
+        } else {
+            newState = .neutral
+        }
+        
+        // Check transitions
+        if currentState == .neutral && newState == .high {
             sendNotification(
                 title: "High ROI Alert: \(position.ticker) 🚀",
-                body: "ROI hit \(newROI.formatted(.percent.precision(.fractionLength(1))))! Profit: \(position.realizedPnL.formatted(.currency(code: "USD"))) (Sell @ \(position.currentPrice.formatted(.currency(code: "USD"))))",
+                body: "High ROI hit: \(newROI.formatted(.percent.precision(.fractionLength(1)))) — Profit: \(position.realizedPnL.formatted(.currency(code: "USD"))) (Sell @ \(position.currentPrice.formatted(.currency(code: "USD"))))",
                 url: position.marketUrl
             )
-        }
-        
-        // Check Low ROI
-        // Trigger if we crossed BELOW the threshold (old > low && new <= low)
-        if oldROI > lowThreshold && newROI <= lowThreshold {
+        } else if currentState == .neutral && newState == .low {
             sendNotification(
                 title: "Low ROI Alert: \(position.ticker) 📉",
-                body: "ROI dropped to \(newROI.formatted(.percent.precision(.fractionLength(1)))). Profit: \(position.realizedPnL.formatted(.currency(code: "USD"))) (Sell @ \(position.currentPrice.formatted(.currency(code: "USD"))))",
+                body: "Low ROI hit: \(newROI.formatted(.percent.precision(.fractionLength(1)))) — Profit: \(position.realizedPnL.formatted(.currency(code: "USD"))) (Sell @ \(position.currentPrice.formatted(.currency(code: "USD"))))",
                 url: position.marketUrl
             )
         }
         
-        // Check Target Profit
-        if let target = targetProfit {
-            // We need to track if we already alerted for profit. 
-            // Since Position struct is re-created often, we might need persistent state for "one-off" targets like Profit/Price.
-            // However, for ROI, the crossing logic (old vs new) handles "fire once" naturally.
-            // For Profit/Price, we can use the same crossing logic if we tracked lastProfit/lastPrice, 
-            // OR we can keep using positionAlertStates for these specific one-off targets.
-            
-            // For now, let's use the existing state map for Profit/Price to avoid adding more fields to Position if not needed.
-            var state = positionAlertStates[position.ticker] ?? PositionAlertState()
-            
-            if position.realizedPnL >= target {
-                if !state.isAboveTargetProfit {
-                    sendNotification(
-                        title: "Profit Target Hit: \(position.ticker) 💰",
-                        body: "Profit reached \(position.realizedPnL.formatted(.currency(code: "USD")))! (Target: \(target.formatted(.currency(code: "USD"))))",
-                        url: position.marketUrl
-                    )
-                    state.isAboveTargetProfit = true
-                    shouldUpdateState = true
-                }
-            } else {
-                if state.isAboveTargetProfit {
-                    state.isAboveTargetProfit = false
-                    shouldUpdateState = true
-                }
-            }
-            
-            if shouldUpdateState {
-                positionAlertStates[position.ticker] = state
-            }
-        }
+        // Update state on position
+        position.previousROIState = newState
         
-        // Check Target Price
-        if let target = targetPrice {
-            let currentPrice = position.currentPrice
-            // Target Price is in cents (e.g. 50 for 50c). Current price is dollars (0.50).
-            // Compare cents to cents.
-            if (currentPrice * 100) >= target {
-                var state = positionAlertStates[position.ticker] ?? PositionAlertState()
-                
-                if !state.isAboveTargetPrice {
-                    sendNotification(
-                        title: "Price Target Hit: \(position.ticker) 🎯",
-                        body: "Price reached \(currentPrice.formatted(.currency(code: "USD")))! (Target: \(target.formatted())¢)",
-                        url: position.marketUrl
-                    )
-                    state.isAboveTargetPrice = true
-                    positionAlertStates[position.ticker] = state
-                }
-            } else {
-                 var state = positionAlertStates[position.ticker] ?? PositionAlertState()
-                 if state.isAboveTargetPrice {
-                     state.isAboveTargetPrice = false
+        // Check Target Profit (One-off)
+        if let target = targetProfit {
+             var state = positionAlertStates[position.ticker] ?? PositionAlertState()
+             
+             if position.realizedPnL >= target {
+                 if !state.isAboveTargetProfit {
+                     sendNotification(
+                         title: "Profit Target Hit: \(position.ticker) 💰",
+                         body: "Profit reached \(position.realizedPnL.formatted(.currency(code: "USD")))! (Target: \(target.formatted(.currency(code: "USD"))))",
+                         url: position.marketUrl
+                     )
+                     state.isAboveTargetProfit = true
                      positionAlertStates[position.ticker] = state
                  }
-            }
-        }
+             } else {
+                 if state.isAboveTargetProfit {
+                     state.isAboveTargetProfit = false
+                     positionAlertStates[position.ticker] = state
+                 }
+             }
+         }
+         
+         // Check Target Price (One-off)
+         if let target = targetPrice {
+             let currentPrice = position.currentPrice
+             // Target Price is in cents (e.g. 50 for 50c). Current price is dollars (0.50).
+             if (currentPrice * 100) >= target {
+                 var state = positionAlertStates[position.ticker] ?? PositionAlertState()
+                 
+                 if !state.isAboveTargetPrice {
+                     sendNotification(
+                         title: "Price Target Hit: \(position.ticker) 🎯",
+                         body: "Price reached \(currentPrice.formatted(.currency(code: "USD")))! (Target: \(target.formatted())¢)",
+                         url: position.marketUrl
+                     )
+                     state.isAboveTargetPrice = true
+                     positionAlertStates[position.ticker] = state
+                 }
+             } else {
+                  var state = positionAlertStates[position.ticker] ?? PositionAlertState()
+                  if state.isAboveTargetPrice {
+                      state.isAboveTargetPrice = false
+                      positionAlertStates[position.ticker] = state
+                  }
+             }
+         }
     }
     
     private func checkPortfolioThresholds() {
