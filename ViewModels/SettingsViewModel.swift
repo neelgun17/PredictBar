@@ -46,8 +46,8 @@ class SettingsViewModel: ObservableObject {
     }
     
     // MARK: - API Credentials (Keychain)
-    @Published var apiKey: String = ""
-    @Published var apiSecret: String = ""
+    // MARK: - API Credentials (Keychain)
+    @Published var hasCredentials: Bool = false
     
     private init() {
         let defaults = UserDefaults.standard
@@ -73,24 +73,30 @@ class SettingsViewModel: ObservableObject {
         let low = defaults.double(forKey: "lowROIThreshold")
         self.lowROIThreshold = low == 0 ? -20.0 : low
         
-        loadCredentials()
+        loadCredentialsState()
     }
     
-    func loadCredentials() {
-        if let key = KeychainManager.shared.get(for: "kalshi_key") {
-            self.apiKey = key
-        }
-        if let secret = KeychainManager.shared.get(for: "kalshi_token") {
-            self.apiSecret = secret
+    func loadCredentialsState() {
+        self.hasCredentials = CredentialsManager.shared.hasCredentials()
+    }
+    
+    func saveCredentials(key: String, secret: String) {
+        guard !key.isEmpty, !secret.isEmpty else { return }
+        
+        do {
+            try CredentialsManager.shared.save(apiKey: key, privateKey: secret)
+            loadCredentialsState()
+        } catch {
+            print("Failed to save credentials: \(error)")
         }
     }
     
-    func saveCredentials() {
-        if !apiKey.isEmpty {
-            _ = KeychainManager.shared.save(apiKey, for: "kalshi_key")
-        }
-        if !apiSecret.isEmpty {
-            _ = KeychainManager.shared.save(apiSecret, for: "kalshi_token")
+    func deleteCredentials() {
+        do {
+            try CredentialsManager.shared.delete()
+            loadCredentialsState()
+        } catch {
+            print("Failed to delete credentials: \(error)")
         }
     }
     

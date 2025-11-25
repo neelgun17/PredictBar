@@ -61,6 +61,25 @@ class DashboardViewModel: ObservableObject {
         SettingsViewModel.shared.$lowROIThreshold
             .sink { [weak self] _ in self?.checkThresholds() }
             .store(in: &cancellables)
+            
+        // Listen for credential updates to auto-refresh data
+        SettingsViewModel.shared.$hasCredentials
+            .receive(on: RunLoop.main)
+            .sink { [weak self] hasCreds in
+                if hasCreds {
+                    print("🔑 Credentials updated, refreshing data...")
+                    self?.fetchData()
+                    WebSocketManager.shared.connect()
+                } else {
+                    print("🔒 Credentials deleted, clearing data...")
+                    self?.positions = []
+                    self?.portfolioValue = 0.0
+                    self?.accountBalance = 0.0
+                    self?.menuBarText = "Kalshi"
+                    WebSocketManager.shared.disconnect()
+                }
+            }
+            .store(in: &cancellables)
     }
     
     func fetchData() {

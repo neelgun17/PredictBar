@@ -233,6 +233,12 @@ class NetworkManager {
     private func authenticatedRequest(to endpoint: String) -> URLRequest? {
         guard let url = URL(string: "https://api.elections.kalshi.com/trade-api/v2" + endpoint) else { return nil }
         
+        // Retrieve credentials securely
+        guard let credentials = try? CredentialsManager.shared.get() else {
+            print("❌ Missing Kalshi API credentials. Please add them in Settings.")
+            return nil
+        }
+        
         print("DEBUG: Requesting URL: \(url.absoluteString)")
         
         var request = URLRequest(url: url)
@@ -245,11 +251,11 @@ class NetworkManager {
         
         let messageToSign = timestamp + method + path
         
-        guard let signature = sign(message: messageToSign, privateKeyPEM: Secrets.privateKey) else {
+        guard let signature = sign(message: messageToSign, privateKeyPEM: credentials.privateKey) else {
             return nil
         }
         
-        request.addValue(Secrets.keyId, forHTTPHeaderField: "KALSHI-ACCESS-KEY")
+        request.addValue(credentials.apiKey, forHTTPHeaderField: "KALSHI-ACCESS-KEY")
         request.addValue(timestamp, forHTTPHeaderField: "KALSHI-ACCESS-TIMESTAMP")
         request.addValue(signature, forHTTPHeaderField: "KALSHI-ACCESS-SIGNATURE")
         
@@ -260,14 +266,22 @@ class NetworkManager {
         guard let data = message.data(using: .utf8) else { return nil }
         
         // 1. Clean PEM string
+        // Robust cleaning: Remove headers/footers and any non-base64 characters
         let cleanPEM = privateKeyPEM
-            .replacingOccurrences(of: "-----BEGIN RSA PRIVATE KEY-----", with: "")
-            .replacingOccurrences(of: "-----END RSA PRIVATE KEY-----", with: "")
-            .replacingOccurrences(of: "\n", with: "")
-            .replacingOccurrences(of: "\r", with: "")
+            .components(separatedBy: .newlines)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("-----") }
+            .joined()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "\t", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard let keyData = Data(base64Encoded: cleanPEM) else {
+            print("❌ Failed to decode Private Key PEM. Please check format.")
+            print("📝 Input length: \(privateKeyPEM.count), Cleaned length: \(cleanPEM.count)")
+            // Debug: print first/last few chars to help debug (don't print whole key)
+            if cleanPEM.count > 10 {
+                print("📝 Cleaned start: \(cleanPEM.prefix(5))... end: ...\(cleanPEM.suffix(5))")
+            }
             return nil
         }
         
@@ -279,6 +293,7 @@ class NetworkManager {
         
         var error: Unmanaged<CFError>?
         guard let privateKey = SecKeyCreateWithData(keyData as CFData, attributes as CFDictionary, &error) else {
+            print("❌ Failed to create SecKey from data: \(error?.takeRetainedValue().localizedDescription ?? "Unknown error")")
             return nil
         }
         
@@ -286,10 +301,12 @@ class NetworkManager {
         let algorithm: SecKeyAlgorithm = .rsaSignatureMessagePSSSHA256
         
         guard SecKeyIsAlgorithmSupported(privateKey, .sign, algorithm) else {
+            print("❌ Private Key does not support RSA-PSS-SHA256 algorithm.")
             return nil
         }
         
         guard let signatureData = SecKeyCreateSignature(privateKey, algorithm, data as CFData, &error) else {
+            print("❌ Failed to create signature: \(error?.takeRetainedValue().localizedDescription ?? "Unknown error")")
             return nil
         }
         

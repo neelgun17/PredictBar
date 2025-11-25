@@ -66,17 +66,23 @@ class WebSocketManager: ObservableObject {
     private func createAuthenticatedRequest() -> URLRequest? {
         var request = URLRequest(url: url)
         
+        // Retrieve credentials securely
+        guard let credentials = try? CredentialsManager.shared.get() else {
+            print("❌ WebSocket connection failed: Missing Kalshi API credentials.")
+            return nil
+        }
+        
         let timestamp = String(Int(Date().timeIntervalSince1970 * 1000))
         let method = "GET"
         let path = "/trade-api/ws/v2"
         
         let messageToSign = timestamp + method + path
         
-        guard let signature = sign(message: messageToSign, privateKeyPEM: Secrets.privateKey) else {
+        guard let signature = sign(message: messageToSign, privateKeyPEM: credentials.privateKey) else {
             return nil
         }
         
-        request.addValue(Secrets.keyId, forHTTPHeaderField: "KALSHI-ACCESS-KEY")
+        request.addValue(credentials.apiKey, forHTTPHeaderField: "KALSHI-ACCESS-KEY")
         request.addValue(timestamp, forHTTPHeaderField: "KALSHI-ACCESS-TIMESTAMP")
         request.addValue(signature, forHTTPHeaderField: "KALSHI-ACCESS-SIGNATURE")
         
@@ -87,14 +93,17 @@ class WebSocketManager: ObservableObject {
         guard let data = message.data(using: .utf8) else { return nil }
         
         // 1. Clean PEM string
+        // Robust cleaning: Remove headers/footers and any non-base64 characters
         let cleanPEM = privateKeyPEM
-            .replacingOccurrences(of: "-----BEGIN RSA PRIVATE KEY-----", with: "")
-            .replacingOccurrences(of: "-----END RSA PRIVATE KEY-----", with: "")
-            .replacingOccurrences(of: "\n", with: "")
-            .replacingOccurrences(of: "\r", with: "")
+            .components(separatedBy: .newlines)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("-----") }
+            .joined()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "\t", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard let keyData = Data(base64Encoded: cleanPEM) else {
+            print("❌ WebSocket: Failed to decode Private Key PEM.")
             return nil
         }
         
