@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @ObservedObject var settingsViewModel = SettingsViewModel.shared
+    
     var body: some View {
         TabView {
             GeneralSettingsView()

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 /// Opens the SwiftUI Settings view even when the app isn't running from a `.app` bundle.
 /// This provides a manual fallback for menu bar builds launched via `swift run` or other CLI entrypoints.
@@ -7,14 +8,23 @@ final class SettingsWindowManager {
     static let shared = SettingsWindowManager()
     
     private var window: NSWindow?
+    private var cancellables = Set<AnyCancellable>()
     
-    private init() {}
+    private init() {
+        // Observe appearance changes
+        SettingsViewModel.shared.$appearanceMode
+            .sink { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.updateWindowAppearance()
+                }
+            }
+            .store(in: &cancellables)
+    }
     
     func open() {
         if window == nil {
             let hostingController = NSHostingController(
                 rootView: SettingsView()
-                    .applyAppearance(SettingsViewModel.shared.appearanceMode)
             )
             
             let window = NSWindow(
@@ -33,6 +43,22 @@ final class SettingsWindowManager {
         
         window?.makeKeyAndOrderFront(nil)
         window?.orderFrontRegardless()
+        
+        // Ensure window appearance matches preference
+        updateWindowAppearance()
+        
         NSApp.activate(ignoringOtherApps: true)
+    }
+    
+    func updateWindowAppearance() {
+        let mode = SettingsViewModel.shared.appearanceMode
+        switch mode {
+        case "Light":
+            window?.appearance = NSAppearance(named: .aqua)
+        case "Dark":
+            window?.appearance = NSAppearance(named: .darkAqua)
+        default:
+            window?.appearance = nil // System
+        }
     }
 }

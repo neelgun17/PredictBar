@@ -87,6 +87,7 @@ class NetworkManager {
         let noBid: Int?
         let yesAsk: Int?
         let noAsk: Int?
+        let status: String?
         
         enum CodingKeys: String, CodingKey {
             case ticker
@@ -98,6 +99,7 @@ class NetworkManager {
             case noBid = "no_bid"
             case yesAsk = "yes_ask"
             case noAsk = "no_ask"
+            case status
         }
     }
 

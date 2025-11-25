@@ -7,6 +7,7 @@ struct Market: Codable, Identifiable {
     let yesBid: Int
     let yesAsk: Int
     let expirationDate: Date
+    let status: String?
     
     var id: String { ticker }
     

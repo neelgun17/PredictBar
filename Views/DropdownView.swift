@@ -135,6 +135,11 @@ struct DropdownView: View {
                                                     hoveredTicker = nil
                                                 }
                                             }
+                                            .onTapGesture {
+                                                if let url = position.marketUrl {
+                                                    NSWorkspace.shared.open(url)
+                                                }
+                                            }
                                             .animation(.easeInOut(duration: 0.15), value: hoveredTicker == position.ticker)
                                             
                                             VStack(alignment: .leading, spacing: 2) {

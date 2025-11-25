@@ -15,6 +15,10 @@ struct Position: Identifiable, Codable {
     var marketUrl: URL?
     var seriesTicker: String? = nil
     var seriesTitle: String? = nil
+    var status: String? = nil
+    
+    // Alert state tracking
+    var lastROI: Double? = nil
     
     // History for sparklines
     var history: [Double] = []
