@@ -10,7 +10,6 @@ struct DropdownView: View {
     @State private var hoveredTicker: String?
     
     @AppStorage("appearanceMode") private var appearanceMode: String = "System"
-//    @AppStorage("appearanceMode") private var appearanceMode: String = "System"
     @AppStorage("compactMode") private var compactMode: Bool = false
     
     var displayedPositions: [Position] {
@@ -166,23 +165,54 @@ struct DropdownView: View {
                                                         .font(.system(size: 11))
                                                         .foregroundColor(.primary.opacity(0.4))
                                                     
-                                                    Text("Sell \(position.currentPrice, format: .currency(code: "USD"))")
-                                                        .font(.system(size: 11))
-                                                        .foregroundColor(.primary.opacity(0.65))
-                                                    
                                                     if let sellURL = sellUrl(for: position) {
-                                                        Text("·")
-                                                            .font(.system(size: 11))
-                                                            .foregroundColor(.primary.opacity(0.4))
-                                                        
                                                         Button(action: {
                                                             NSWorkspace.shared.open(sellURL)
                                                         }) {
-                                                            Text("Sell on Kalshi")
-                                                                .font(.system(size: 11, weight: .semibold))
+                                                            Text("Sell \(position.currentPrice, format: .currency(code: "USD"))")
+                                                                .font(.system(size: 10, weight: .bold))
+                                                                .foregroundColor(.white)
+                                                                .padding(.horizontal, 6)
+                                                                .padding(.vertical, 2)
+                                                                .background(Color.accentColor)
+                                                                .cornerRadius(4)
                                                         }
                                                         .buttonStyle(.plain)
-                                                        .foregroundColor(.accentColor)
+                                                        .onHover { inside in
+                                                            if inside {
+                                                                NSCursor.pointingHand.push()
+                                                            } else {
+                                                                NSCursor.pop()
+                                                            }
+                                                        }
+                                                    } else {
+                                                        Text("Sell \(position.currentPrice, format: .currency(code: "USD"))")
+                                                            .font(.system(size: 10, weight: .bold))
+                                                            .foregroundColor(.secondary)
+                                                            .padding(.horizontal, 6)
+                                                            .padding(.vertical, 2)
+                                                            .background(Color.secondary.opacity(0.1))
+                                                            .cornerRadius(4)
+                                                    }
+                                                    
+                                                    Button(action: {
+                                                        configuringPosition = position
+                                                    }) {
+                                                        Text("Alerts")
+                                                            .font(.system(size: 10, weight: .bold))
+                                                            .foregroundColor(.primary)
+                                                            .padding(.horizontal, 6)
+                                                            .padding(.vertical, 2)
+                                                            .background(Color.secondary.opacity(0.1))
+                                                            .cornerRadius(4)
+                                                    }
+                                                    .buttonStyle(.plain)
+                                                    .onHover { inside in
+                                                        if inside {
+                                                            NSCursor.pointingHand.push()
+                                                        } else {
+                                                            NSCursor.pop()
+                                                        }
                                                     }
                                                 }
                                             }

@@ -124,9 +124,9 @@ class NetworkManager {
             
             do {
                 // Debug: Print market response
-                if let jsonStr = String(data: data, encoding: .utf8) {
-                     // print("Market Response for \(ticker): \(jsonStr)")
-                }
+                // if let jsonStr = String(data: data, encoding: .utf8) {
+                //      print("Market Response for \(ticker): \(jsonStr)")
+                // }
                 
                 let response = try JSONDecoder().decode(MarketResponse.self, from: data)
                 completion(.success(response.market))
@@ -173,9 +173,9 @@ class NetworkManager {
             
             do {
                 // Debug: Print event response
-                if let jsonStr = String(data: data, encoding: .utf8) {
-                     // print("Event Response for \(eventTicker): \(jsonStr)")
-                }
+                // if let jsonStr = String(data: data, encoding: .utf8) {
+                //      print("Event Response for \(eventTicker): \(jsonStr)")
+                // }
                 
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -194,8 +194,6 @@ class NetworkManager {
     struct Series: Decodable {
         let ticker: String
         let title: String
-        // We hope the slug is here, maybe as 'url_slug' or derived from title?
-        // Let's inspect the raw JSON first.
     }
     
     func fetchSeries(seriesTicker: String, completion: @escaping (Result<Series, Error>) -> Void) {
@@ -253,7 +251,7 @@ class NetworkManager {
         
         let messageToSign = timestamp + method + path
         
-        guard let signature = sign(message: messageToSign, privateKeyPEM: credentials.privateKey) else {
+        guard let signature = CryptoUtils.sign(message: messageToSign, privateKeyPEM: credentials.privateKey) else {
             return nil
         }
         
@@ -262,57 +260,6 @@ class NetworkManager {
         request.addValue(signature, forHTTPHeaderField: "KALSHI-ACCESS-SIGNATURE")
         
         return request
-    }
-    
-    private func sign(message: String, privateKeyPEM: String) -> String? {
-        guard let data = message.data(using: .utf8) else { return nil }
-        
-        // 1. Clean PEM string
-        // Robust cleaning: Remove headers/footers and any non-base64 characters
-        let cleanPEM = privateKeyPEM
-            .components(separatedBy: .newlines)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("-----") }
-            .joined()
-            .replacingOccurrences(of: " ", with: "")
-            .replacingOccurrences(of: "\t", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        guard let keyData = Data(base64Encoded: cleanPEM) else {
-            print("❌ Failed to decode Private Key PEM. Please check format.")
-            print("📝 Input length: \(privateKeyPEM.count), Cleaned length: \(cleanPEM.count)")
-            // Debug: print first/last few chars to help debug (don't print whole key)
-            if cleanPEM.count > 10 {
-                print("📝 Cleaned start: \(cleanPEM.prefix(5))... end: ...\(cleanPEM.suffix(5))")
-            }
-            return nil
-        }
-        
-        // 2. Create SecKey
-        let attributes: [String: Any] = [
-            kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
-            kSecAttrKeyClass as String: kSecAttrKeyClassPrivate
-        ]
-        
-        var error: Unmanaged<CFError>?
-        guard let privateKey = SecKeyCreateWithData(keyData as CFData, attributes as CFDictionary, &error) else {
-            print("❌ Failed to create SecKey from data: \(error?.takeRetainedValue().localizedDescription ?? "Unknown error")")
-            return nil
-        }
-        
-        // 3. Sign with RSA-PSS-SHA256
-        let algorithm: SecKeyAlgorithm = .rsaSignatureMessagePSSSHA256
-        
-        guard SecKeyIsAlgorithmSupported(privateKey, .sign, algorithm) else {
-            print("❌ Private Key does not support RSA-PSS-SHA256 algorithm.")
-            return nil
-        }
-        
-        guard let signatureData = SecKeyCreateSignature(privateKey, algorithm, data as CFData, &error) else {
-            print("❌ Failed to create signature: \(error?.takeRetainedValue().localizedDescription ?? "Unknown error")")
-            return nil
-        }
-        
-        return (signatureData as Data).base64EncodedString()
     }
     
     struct CandlestickResponse: Decodable {
@@ -330,13 +277,7 @@ class NetworkManager {
     }
     
     struct PriceWindow: Decodable {
-        let open: Int?
-        let high: Int?
-        let low: Int?
         let close: Int?
-        let openDollars: String?
-        let highDollars: String?
-        let lowDollars: String?
         let closeDollars: String?
     }
     
@@ -469,7 +410,7 @@ class NetworkManager {
             (start: now - 48 * 60 * 60, end: now - 24 * 60 * 60)
         ]
         
-        guard let seriesTicker = seriesTicker else {
+        guard seriesTicker != nil else {
             print("Candles missing series ticker for \(marketTicker)")
             completion(.failure(URLError(.badURL)))
             return
