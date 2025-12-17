@@ -3,6 +3,7 @@ import SwiftUI
 struct DropdownView: View {
     @ObservedObject var viewModel: DashboardViewModel
     @ObservedObject var settingsViewModel = SettingsViewModel.shared
+    @Environment(\.openWindow) private var openWindow
     
     // 0: Cash Out, 1: ROI, 2: P&L, 3: Portfolio Value, 4: Account Balance
     @State private var displayMode = 0
@@ -47,6 +48,14 @@ struct DropdownView: View {
                     .buttonStyle(.plain)
                     .help("Refresh")
                     
+                    Button(action: { openWindow(id: "backtesting") }) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Backtesting")
+                                        
                     Button(action: openSettings) {
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 12))

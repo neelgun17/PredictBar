@@ -124,9 +124,9 @@ class NetworkManager {
             
             do {
                 // Debug: Print market response
-                // if let jsonStr = String(data: data, encoding: .utf8) {
-                //      print("Market Response for \(ticker): \(jsonStr)")
-                // }
+                 if let jsonStr = String(data: data, encoding: .utf8) {
+                      print("Market Response for \(ticker): \(jsonStr)")
+                 }
                 
                 let response = try JSONDecoder().decode(MarketResponse.self, from: data)
                 completion(.success(response.market))
@@ -231,6 +231,9 @@ class NetworkManager {
     
     // Helper for authenticated requests
     private func authenticatedRequest(to endpoint: String) -> URLRequest? {
+        // endpoint might contain query params, e.g. /portfolio/fills?limit=100
+        // URL needs full endpoint. Signature needs path ONLY.
+        
         guard let url = URL(string: "https://api.elections.kalshi.com/trade-api/v2" + endpoint) else { return nil }
         
         // Retrieve credentials securely
@@ -239,7 +242,7 @@ class NetworkManager {
             return nil
         }
         
-        print("DEBUG: Requesting URL: \(url.absoluteString)")
+        // print("DEBUG: Requesting URL: \(url.absoluteString)")
         
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -247,9 +250,18 @@ class NetworkManager {
         
         let timestamp = String(Int(Date().timeIntervalSince1970 * 1000))
         let method = "GET"
-        let path = "/trade-api/v2" + endpoint
         
-        let messageToSign = timestamp + method + path
+        // Extract path component for signing (strip query params)
+        // If endpoint is "/portfolio/fills?limit=100", path should be "/trade-api/v2/portfolio/fills"
+        let pathOnly: String
+        if let components = URLComponents(string: endpoint) {
+            pathOnly = "/trade-api/v2" + components.path
+        } else {
+             // Fallback if parsing fails (unlikely)
+             pathOnly = "/trade-api/v2" + endpoint.split(separator: "?")[0]
+        }
+        
+        let messageToSign = timestamp + method + pathOnly
         
         guard let signature = CryptoUtils.sign(message: messageToSign, privateKeyPEM: credentials.privateKey) else {
             return nil
@@ -279,6 +291,41 @@ class NetworkManager {
     struct PriceWindow: Decodable {
         let close: Int?
         let closeDollars: String?
+        let high: Int?
+        let low: Int?
+    }
+    
+    /// Public method to fetch candles for backtesting (replaces fetchTrades which is 404)
+    func fetchCandles(seriesTicker: String, marketTicker: String, startTs: Int, endTs: Int, completion: @escaping (Result<[Candlestick], Error>) -> Void) {
+        var components = URLComponents(string: "/series/\(seriesTicker)/markets/\(marketTicker)/candlesticks")
+        components?.queryItems = [
+            URLQueryItem(name: "start_ts", value: String(startTs)),
+            URLQueryItem(name: "end_ts", value: String(endTs)),
+            URLQueryItem(name: "period_interval", value: "1") // 1 minute candles
+        ]
+        
+        guard let endpoint = components?.string,
+              let request = authenticatedRequest(to: endpoint) else {
+            completion(.failure(URLError(.badURL)))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error { completion(.failure(error)); return }
+            guard let data = data else { completion(.failure(URLError(.badServerResponse))); return }
+            
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let response = try decoder.decode(CandlestickResponse.self, from: data)
+                completion(.success(response.candlesticks))
+            } catch {
+                if let str = String(data: data, encoding: .utf8) {
+                   print("Debug - fetchCandles JSON decode failed. Raw: \(str)")
+                }
+                completion(.failure(error))
+            }
+        }.resume()
     }
     
     /// Fetch market history using the documented series endpoint only (1m candles).
@@ -440,6 +487,97 @@ class NetworkManager {
             }
         }
         
-        attemptWindow(index: 0)
+    }
+    
+    // MARK: - Backtesting Endpoints
+    
+    struct FillsResponse: Decodable {
+        let fills: [Fill]?
+        let cursor: String?
+    }
+    
+    func fetchFills(cursor: String? = nil, limit: Int = 100, completion: @escaping (Result<(FillsResponse, String), Error>) -> Void) {
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor = cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        
+        var components = URLComponents(string: "/portfolio/fills")
+        components?.queryItems = queryItems
+        
+        guard let endpoint = components?.string,
+              let request = authenticatedRequest(to: endpoint) else {
+            completion(.failure(URLError(.badURL)))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error { completion(.failure(error)); return }
+            guard let data = data else { completion(.failure(URLError(.badServerResponse))); return }
+            
+            let jsonStr = String(data: data, encoding: .utf8) ?? "Invalid encoding"
+            
+            do {
+                let decoder = JSONDecoder()
+                // decoder.keyDecodingStrategy = .convertFromSnakeCase // Fill has explicit keys, FillsResponse is simple
+                let response = try decoder.decode(FillsResponse.self, from: data)
+                completion(.success((response, jsonStr)))
+            } catch {
+                print("Debug - Raw Fills Response: \(jsonStr)")
+                print("Debug - Decoding Error: \(error)")
+                // Create a custom error with the JSON snippet to show in UI
+                let snippet = String(jsonStr.prefix(500))
+                let debugError = NSError(domain: "KalshiAPI", code: -1, userInfo: [NSLocalizedDescriptionKey: "Decoding Failed: \(snippet)"])
+                completion(.failure(debugError))
+            }
+        }.resume()
+    }
+    
+    struct PublicTrade: Decodable {
+        let price: Int
+        let count: Int
+        let createdTime: String
+        let takerSide: String
+    }
+
+    struct TradesResponse: Decodable {
+        let trades: [PublicTrade]
+        let cursor: String?
+    }
+    
+    func fetchTrades(ticker: String, minTs: Int? = nil, maxTs: Int? = nil, limit: Int = 1000, cursor: String? = nil, completion: @escaping (Result<TradesResponse, Error>) -> Void) {
+        var queryItems = [
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        if let minTs = minTs { queryItems.append(URLQueryItem(name: "min_ts", value: String(minTs))) }
+        if let maxTs = maxTs { queryItems.append(URLQueryItem(name: "max_ts", value: String(maxTs))) }
+        if let cursor = cursor { queryItems.append(URLQueryItem(name: "cursor", value: cursor)) }
+        
+        // Note: Kalshi /markets/{ticker}/trades endpoint
+        var components = URLComponents(string: "/markets/\(ticker)/trades")
+        components?.queryItems = queryItems
+        
+        guard let endpoint = components?.string,
+              let request = authenticatedRequest(to: endpoint) else {
+            completion(.failure(URLError(.badURL)))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error { completion(.failure(error)); return }
+            guard let data = data else { completion(.failure(URLError(.badServerResponse))); return }
+            
+            do {
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let response = try decoder.decode(TradesResponse.self, from: data)
+                completion(.success(response))
+            } catch {
+                if let str = String(data: data, encoding: .utf8) {
+                    print("Debug - fetchTrades JSON decode failed. Raw: \(str)")
+                }
+                completion(.failure(error)) 
+            }
+        }.resume()
     }
 }

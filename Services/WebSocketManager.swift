@@ -175,7 +175,7 @@ class WebSocketManager: ObservableObject {
             let message = try JSONDecoder().decode(WebSocketMessage.self, from: data)
             
             if message.type == "ticker", let tickerData = message.msg, let ticker = tickerData.market_ticker {
-                print(text) // raw ticker data payload
+                // print(text) // raw ticker data payload
                 let quote = TickerQuote(
                     ticker: ticker,
                     lastPrice: tickerData.price,

@@ -20,6 +20,13 @@ struct KalshiMenuBarApp: App {
             SettingsView()
                 .applyAppearance(appearanceMode)
         }
+        
+        WindowGroup(id: "backtesting") {
+            BacktestingView()
+                .applyAppearance(appearanceMode)
+        }
+        .windowResizability(.contentSize)
+        .commandsRemoved()
     }
 }
 

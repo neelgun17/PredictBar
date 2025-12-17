@@ -62,7 +62,7 @@ class WidgetDataStore {
         
         if let data = try? encoder.encode(snapshot) {
             userDefaults.set(data, forKey: snapshotKey)
-            print("Widget snapshot saved: \(snapshot.positions.count) positions")
+            // print("Widget snapshot saved: \(snapshot.positions.count) positions")
         }
     }
     
