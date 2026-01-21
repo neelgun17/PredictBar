@@ -25,13 +25,13 @@ struct KalshiMenuBarApp: App {
 
 class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Only setup notifications when running as a proper app bundle
+        guard Bundle.main.bundleURL.pathExtension == "app" else { return }
+
         UNUserNotificationCenter.current().delegate = self
-        
-        if Bundle.main.bundleURL.pathExtension == "app" {
-            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-                if let error = error {
-                    print("Notification authorization error: \(error)")
-                }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error = error {
+                print("Notification authorization error: \(error)")
             }
         }
     }
