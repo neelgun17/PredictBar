@@ -130,7 +130,7 @@ class DashboardViewModel: ObservableObject {
                     WebSocketManager.shared.subscribeToTickers(tickers)
                     
                     // Fetch market details for each position
-                    for (index, position) in positions.enumerated() {
+                    for (_, position) in positions.enumerated() {
                         NetworkManager.shared.fetchMarket(ticker: position.ticker) { [weak self] result in
                             DispatchQueue.main.async {
                                 switch result {
@@ -357,7 +357,7 @@ class DashboardViewModel: ObservableObject {
     }
     
     private func handleAlerts(for position: inout Position, newROI: Double, highThreshold: Double, lowThreshold: Double, targetProfit: Double?, targetPrice: Double?) {
-        var currentState = position.previousROIState
+        let currentState = position.previousROIState
         
         // Determine new state based on thresholds
         // Note: We use a hysteresis or simple transition. 
