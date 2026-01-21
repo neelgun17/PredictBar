@@ -1,64 +1,148 @@
-# Kalshi Menu Bar 🚀
+# Kalshi Menu Bar
 
 A native macOS menu bar application for tracking your Kalshi portfolio, positions, and ROI in real-time.
 
+![macOS](https://img.shields.io/badge/macOS-13.0%2B-blue)
+![Swift](https://img.shields.io/badge/Swift-5.9-orange)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+<!--
+## Screenshots
+
+Add screenshots here:
+![Menu Bar](screenshots/menubar.png)
+![Dropdown View](screenshots/dropdown.png)
+![Settings](screenshots/settings.png)
+-->
+
 ## Features
 
-- **Real-time Updates**: View your total portfolio value and account balance directly in the menu bar.
-- **Position Tracking**: See all your active positions, including current price, profit/loss, and ROI.
-- **Smart Alerts**: Get notified when your positions hit high or low ROI thresholds.
-- **Secure**: Your API credentials are stored securely in the macOS Keychain.
-- **Native Experience**: Designed to look and feel like a part of macOS.
+- **Real-time Portfolio Tracking** - View your total portfolio value, cash balance, and ROI directly in the menu bar
+- **Position Management** - See all active positions with current price, profit/loss, ROI, and sparkline charts
+- **Smart Alerts** - Get notified when positions hit customizable ROI thresholds, profit targets, or price targets
+- **Per-Position Alerts** - Configure individual alert settings for each position
+- **Dashboard Widget** - macOS widget showing your top positions at a glance
+- **Multiple Display Modes** - Choose what to show in the menu bar: Cash Out Value, ROI %, P&L, Portfolio Value, or Balance
+- **Secure Storage** - API credentials stored in macOS Keychain (never saved to disk)
+- **Native Experience** - Built with SwiftUI, designed to feel like a native macOS app
+
+## Requirements
+
+- **macOS 13.0** (Ventura) or later
+- **Xcode 15+** and Swift 5.9+ (for building from source)
+- A [Kalshi](https://kalshi.com) account with API access
 
 ## Installation
 
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/neelgun17/KalshiMenuBar.git
-    cd KalshiMenuBar
-    ```
+### Option 1: Build from Source
 
-2.  **Build and Run**:
-    We've included a helper script to build and launch the app:
-    ```bash
-    ./restart.sh
-    ```
-    This will compile the app and launch it. You should see the Kalshi icon appear in your menu bar.
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/neelgun17/KalshiMenuBar.git
+   cd KalshiMenuBar
+   ```
 
-## Setup & Configuration
+2. **Build and run**:
+   ```bash
+   swift build
+   .build/debug/KalshiMenuBar
+   ```
 
-### 1. Get your Kalshi API Keys
-To use this app, you need a Kalshi API Key and a Private Key.
+   Or use the helper script:
+   ```bash
+   ./restart.sh
+   ```
 
-1.  Log in to [Kalshi](https://kalshi.com).
-2.  Go to the **API** section in your account settings.
-3.  Generate a new API Key.
-4.  **Important**: You will be given a **Key ID** (UUID) and a **Private Key** (a long text block starting with `-----BEGIN RSA PRIVATE KEY-----`).
-5.  Copy both of these.
+3. The Kalshi icon will appear in your menu bar.
+
+## Setup
+
+### 1. Get Your Kalshi API Keys
+
+1. Log in to [Kalshi](https://kalshi.com)
+2. Go to **Settings** > **API** in your account
+3. Click **Generate New API Key**
+4. You'll receive:
+   - **API Key** (a UUID like `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
+   - **Private Key** (starts with `-----BEGIN RSA PRIVATE KEY-----`)
+5. **Save both immediately** - the private key is only shown once!
 
 ### 2. Configure the App
-1.  Click the **Kalshi icon** in your menu bar.
-2.  Select **Settings** (or press `Cmd+,`).
-3.  Navigate to the **API** tab.
-4.  Paste your **API Key** (UUID) into the first field.
-5.  Paste your **Private Key** (PEM format) into the second field.
-    *   *Note: The app accepts the key with or without the header/footer lines.*
-6.  Click **Save Credentials**.
 
-Once saved, the app will immediately fetch your portfolio data.
+1. Click the **Kalshi icon** in your menu bar
+2. Click **Settings** (or press `Cmd + ,`)
+3. Go to the **API** tab
+4. Enter your **API Key** and **Private Key**
+5. Click **Save Credentials**
+
+Your portfolio will load automatically once credentials are saved.
 
 ## Usage
 
-- **Menu Bar**: Shows your current Portfolio Value or Cash Out Value (configurable).
-- **Dropdown**: Click the icon to see a detailed list of your active positions.
-- **Refresh**: The app auto-refreshes, but you can force a refresh by clicking "Refresh" in the dropdown.
-- **Quit**: To close the app, click "Quit" in the dropdown.
+### Menu Bar
+The menu bar displays your chosen metric (configurable in Settings > Display):
+- **Cash Out Value** - What you'd get if you sold all positions now
+- **ROI %** - Overall return on investment
+- **P&L** - Total profit/loss in dollars
+- **Portfolio Value** - Total value of positions
+- **Balance** - Available cash balance
+
+### Dropdown View
+Click the menu bar icon to see:
+- Portfolio summary (balance, portfolio value, total ROI)
+- List of all active positions with:
+  - Current price and your average entry price
+  - Quantity held
+  - Profit/Loss and ROI %
+  - Quick sell button with current bid price
+  - Alert configuration button
+
+### Configuring Alerts
+
+#### Global Alerts
+1. Go to **Settings** > **Notifications**
+2. Enable notifications
+3. Set default **High ROI** and **Low ROI** thresholds
+
+#### Per-Position Alerts
+1. Click the **bell icon** next to any position
+2. Configure custom thresholds for that position:
+   - High/Low ROI alerts
+   - Profit target (dollar amount)
+   - Price target (sell when price reaches X)
+
+### Dashboard Widget
+1. Right-click on your desktop > **Edit Widgets**
+2. Search for "Kalshi"
+3. Add the widget (available in small, medium, or large sizes)
+4. Shows your top 5 positions with ROI sparklines
 
 ## Troubleshooting
 
-- **"Failed to decode Private Key"**: Ensure you copied the entire Private Key, including the `-----BEGIN...` and `-----END...` lines.
-- **Positions not showing**: Check your internet connection. If you just saved credentials, give it a moment to refresh.
-- **Logs**: To view debug logs, run the app from the terminal:
-    ```bash
-    ./KalshiMenuBar.app/Contents/MacOS/KalshiMenuBar
-    ```
+| Problem | Solution |
+|---------|----------|
+| "Failed to decode Private Key" | Make sure you copied the entire key including `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----` |
+| Positions not loading | Check your internet connection. Try clicking Refresh in the dropdown. |
+| App not appearing in menu bar | The app runs as a menu bar app only (no dock icon). Look for the icon in your menu bar. |
+| Widget not updating | Widgets refresh on a schedule. Force refresh by opening the main app. |
+
+### View Logs
+To see detailed logs for debugging:
+```bash
+.build/debug/KalshiMenuBar
+```
+
+## Privacy & Security
+
+- **Credentials** are stored in the macOS Keychain, not in plain text files
+- **No data** is sent to any servers other than Kalshi's official API
+- **No analytics** or tracking of any kind
+- All communication uses **HTTPS** with Kalshi's API
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Disclaimer
+
+This is an unofficial application and is not affiliated with, endorsed by, or connected to Kalshi in any way. Use at your own risk. Always verify important information directly on [Kalshi.com](https://kalshi.com).
