@@ -34,7 +34,7 @@ struct Position: Identifiable, Codable {
     // Computed properties for app compatibility
     var id: String { ticker }
     var marketTicker: String { ticker }
-    var quantity: Int { position }
+    var quantity: Int { abs(position) }
     
     // Determine side based on position sign
     var side: String {
