@@ -103,17 +103,13 @@ class BacktestingViewModel: ObservableObject {
                     if uniqueFills.isEmpty && !newFills.isEmpty {
                         // We received fills but we have seen them all before.
                         // Loop detected. Stop.
-                        print("Optimization: Duplicate fills detected (Loop). Stopping fetch.")
                         shouldContinue = false
                     }
-                    
+
                     if uniqueFills.isEmpty && accumulated.isEmpty {
                         // Truly empty start
-                         // Debug: Capture JSON if completely empty
-                         print("Debug - Empty Fills JSON: \(jsonStr)")
-                         let snippet = String(jsonStr.prefix(200))
                          DispatchQueue.main.async {
-                             self.statusMessage = "Empty Response: \(snippet)"
+                             self.statusMessage = "No fills found"
                          }
                     }
                     
@@ -130,7 +126,6 @@ class BacktestingViewModel: ObservableObject {
                     // Optimization: Check if we've reached past the cutoff date
                     if let lastFill = uniqueFills.last, let lastDate = lastFill.date {
                         if lastDate < cutoffDate {
-                            print("Optimization: Reached cutoff date \(cutoffDate). Stopping fetch.")
                             shouldContinue = false
                         }
                     }
@@ -144,7 +139,6 @@ class BacktestingViewModel: ObservableObject {
                         }
                     }
                 case .failure(let error):
-                    print("Error fetching fills: \(error)")
                     DispatchQueue.main.async {
                         completion(error)
                     }
@@ -174,14 +168,11 @@ class BacktestingViewModel: ObservableObject {
                 let cutoff = Calendar.current.date(byAdding: .day, value: -self.selectedPeriod, to: Date()) ?? Date.distantPast
                 
                 let filteredEpisodes = self.cachedEpisodes.filter { $0.entryTime >= cutoff }
-                
-                let summary = "Fills: \(self.allFills.count), Ep: \(self.cachedEpisodes.count), Filt: \(filteredEpisodes.count)"
-                print(summary)
-                
+
                 DispatchQueue.main.async {
                     self.episodes = filteredEpisodes
                     if filteredEpisodes.isEmpty {
-                         self.statusMessage = "No trades in period. (Debug: \(summary))"
+                         self.statusMessage = "No trades found in selected period."
                          self.results = []
                          self.isRunning = false
                          self.hasRun = true
@@ -245,8 +236,6 @@ class BacktestingViewModel: ObservableObject {
                             )
                             updated[index] = newEp
                             lock.unlock()
-                            
-                            print("Settlement Found: \(ep.ticker) settled at \(finalPrice)")
                         }
                     case .failure:
                         break // Keep as is
@@ -302,7 +291,6 @@ class BacktestingViewModel: ObservableObject {
                          completed += 1
                          if total > 0 { self.progress = 0.1 + (0.9 * Double(completed) / Double(total)) }
                          self.statusMessage = "Simulating \(completed)/\(total): \(episode.ticker) (\(resultType))"
-                         print("Processed \(episode.ticker): \(resultType) $\(String(format: "%.2f", pnl))")
                     }
                     semaphore.signal()
                 }

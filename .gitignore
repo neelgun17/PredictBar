@@ -1,0 +1,73 @@
+# Xcode
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+*.xcworkspace/*
+!*.xcworkspace/contents.xcworkspacedata
+/*.gcno
+**/xcshareddata/WorkspaceSettings.xcsettings
+
+# Build artifacts
+.build/
+build/
+DerivedData/
+*.app
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+Packages/
+
+# CocoaPods
+Pods/
+Podfile.lock
+
+# Carthage
+Carthage/Build/
+
+# Debug files
+debug_output.txt
+*.log
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Thumbnails
+Thumbs.db
+
+# IDE
+*.idea/
+*.vscode/
+*.sublime-*
+
+# User-specific files
+*.xcuserstate
+xcuserdata/
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# Secrets (should never be committed)
+*.pem
+*.key
+*.p12
+*.mobileprovision
+.env
+.env.*
+secrets.json
+credentials.json
+
+# Archives
+*.xcarchive
+
+# Code coverage
+*.gcda
+*.gcno
+codecov.yml

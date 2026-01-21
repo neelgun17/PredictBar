@@ -20,16 +20,7 @@ class PositionReconstructor {
                 "yes": OpenState(),
                 "no": OpenState()
             ]
-            
-            // Debug logic
-            if ticker.contains("DETLA") || ticker.contains("MINDAL") {
-                 var log = "Debug - Processing \(ticker) fills (Mixed Side):\n"
-                 for f in sorted {
-                      log += "  Fill: \(f.createdTime ?? "?") Action: '\(f.action)' Side: '\(f.side)' Count: \(f.count) Price: \(f.price) Fee: \(f.totalFeeVal)\n"
-                 }
-                 print(log)
-            }
-            
+
             for fill in sorted {
                 let isBuy = fill.action == "buy"
                 let side = fill.side
@@ -47,8 +38,6 @@ class PositionReconstructor {
                         positions[side]?.sells.append(fill)
                     } else if (positions[otherSide]?.currentQty ?? 0) > 0 {
                         // Mismatched Sell (Orphan Sell Strategy)
-                        // Applying Sell(Side A) to Position(Side B)
-                        print("Warning: Applying mismatched sell \(side) to active position \(otherSide) for \(ticker)")
                         positions[otherSide]?.currentQty -= fill.count
                         positions[otherSide]?.sells.append(fill)
                     } else {

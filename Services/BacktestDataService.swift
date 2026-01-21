@@ -54,12 +54,8 @@ class BacktestDataService {
         
         let minTs = lastTs > 0 ? lastTs + 1 : nil
         
-        // Calculate progress steps if possible? difficult with pagination. w/e.
-        print("Debug - getTrades for \(ticker): Start. LastTS: \(lastTs)")
-        
         fetchTradesPaginated(ticker: ticker, minTs: minTs, maxTs: now) { [weak self] result in
             guard let self = self else { return }
-            print("Debug - getTrades for \(ticker): Fetch Complete. Result: \(result.map { $0.count }) items")
             
             switch result {
             case .success(let newTrades):
@@ -100,7 +96,6 @@ class BacktestDataService {
                 
             case .failure(let error):
                 if !cachedTrades.isEmpty {
-                    print("Network error fetching trades for \(ticker), returning cached: \(error)")
                     completion(.success(cachedTrades)) // Fallback to cache
                 } else {
                     completion(.failure(error))
@@ -108,14 +103,11 @@ class BacktestDataService {
             }
         }
     }
-    
+
     // MARK: - Private Helpers
-    
+
     // Fetches candles (as trades) using the series/market endpoint (since /trades is broken/404)
     private func fetchTradesPaginated(ticker: String, minTs: Int?, maxTs: Int?, accumulated: [NetworkManager.PublicTrade] = [], cursor: String? = nil, completion: @escaping (Result<[NetworkManager.PublicTrade], Error>) -> Void) {
-        
-        // 1. We need the Series Ticker first.
-        print("Debug - fetchCandles (via market) for \(ticker): Fetching market details...")
         semaphore.wait()
         
         // We really need to release the semaphore before completion in all paths
@@ -128,17 +120,14 @@ class BacktestDataService {
             
             switch marketResult {
             case .failure(let error):
-                print("Debug - fetchCandles: Failed to get market details: \(error)")
                 self.semaphore.signal()
                 completion(.failure(error))
-                
+
             case .success(let market):
                 // 2. Resolve Series Ticker (Market -> Event -> Series fallback)
                 func proceedWithSeries(_ series: String) {
                     let start = minTs ?? (Int(Date().timeIntervalSince1970) - 30 * 24 * 3600) // Default 30 days
                     let end = maxTs ?? Int(Date().timeIntervalSince1970)
-                    
-                    print("Debug - fetchCandles: Got series \(series). Fetching candles...")
                     
                     // Chunking logic: API limit is 5000 candles. 
                     // 30 days = 43,200 minutes. We need to split this.
@@ -149,8 +138,6 @@ class BacktestDataService {
                     
                     func fetchChunk(currentStart: Int) {
                         if currentStart >= end {
-                            // Done fetching all chunks
-                            print("Debug - fetchCandles: Finished fetching chunks. Total \(allCandles.count) candles.")
                             
                              // Convert Candles to fake "PublicTrade" objects
                             let fakeTrades = allCandles.compactMap { candle -> NetworkManager.PublicTrade? in
@@ -181,14 +168,10 @@ class BacktestDataService {
                         }
                         
                         let currentEnd = min(currentStart + chunkSize, end)
-                        print("Debug - fetchCandles: Fetching chunk \(currentStart) to \(currentEnd)...")
-                        
+
                         NetworkManager.shared.fetchCandles(seriesTicker: series, marketTicker: ticker, startTs: currentStart, endTs: currentEnd) { candleResult in
                             switch candleResult {
                             case .failure(let error):
-                                print("Debug - fetchCandles: Chunk failed: \(error)")
-                                // If one chunk fails, maybe we still return what we have? 
-                                // Or fail? Let's fail for now to be safe.
                                 self.semaphore.signal()
                                 completion(.failure(error))
                                 
@@ -210,13 +193,11 @@ class BacktestDataService {
                     proceedWithSeries(series)
                 } else {
                     // Fallback: Fetch Event to get Series
-                    print("Debug - fetchCandles: Missing series for \(ticker), fetching Event \(market.eventTicker)...")
                     NetworkManager.shared.fetchEvent(eventTicker: market.eventTicker) { eventResult in
                         switch eventResult {
                         case .success(let event):
                             proceedWithSeries(event.seriesTicker)
                         case .failure(let error):
-                             print("Debug - fetchCandles: Failed to get event: \(error)")
                              self.semaphore.signal()
                              completion(.failure(error))
                         }

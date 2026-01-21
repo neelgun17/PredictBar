@@ -17,11 +17,6 @@ struct CryptoUtils {
         
         guard let keyData = Data(base64Encoded: cleanPEM) else {
             print("❌ Failed to decode Private Key PEM. Please check format.")
-            print("📝 Input length: \(privateKeyPEM.count), Cleaned length: \(cleanPEM.count)")
-            // Debug: print first/last few chars to help debug (don't print whole key)
-            if cleanPEM.count > 10 {
-                print("📝 Cleaned start: \(cleanPEM.prefix(5))... end: ...\(cleanPEM.suffix(5))")
-            }
             return nil
         }
         

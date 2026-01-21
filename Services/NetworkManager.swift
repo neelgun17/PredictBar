@@ -123,11 +123,6 @@ class NetworkManager {
             }
             
             do {
-                // Debug: Print market response
-                 if let jsonStr = String(data: data, encoding: .utf8) {
-                      print("Market Response for \(ticker): \(jsonStr)")
-                 }
-                
                 let response = try JSONDecoder().decode(MarketResponse.self, from: data)
                 completion(.success(response.market))
             } catch {
@@ -320,9 +315,6 @@ class NetworkManager {
                 let response = try decoder.decode(CandlestickResponse.self, from: data)
                 completion(.success(response.candlesticks))
             } catch {
-                if let str = String(data: data, encoding: .utf8) {
-                   print("Debug - fetchCandles JSON decode failed. Raw: \(str)")
-                }
                 completion(.failure(error))
             }
         }.resume()
@@ -392,15 +384,7 @@ class NetworkManager {
         }
         
         func logResponse(_ label: String, _ data: Data?, _ response: URLResponse?, _ error: Error?) {
-            if let error = error {
-                print("Candles \(label) error: \(error)")
-                return
-            }
-            guard let http = response as? HTTPURLResponse else { print("Candles \(label) missing HTTP response"); return }
-            print("Candles \(label) status: \(http.statusCode)")
-            if let data = data, let body = String(data: data, encoding: .utf8) {
-                print("Candles \(label) body: \(body.prefix(200))")
-            }
+            // Logging disabled for production
         }
         
         func makeSeriesRequest(start: Int, end: Int) -> URLRequest? {
@@ -438,13 +422,11 @@ class NetworkManager {
                 do {
                     let prices = try parsePrices(data: data)
                     if prices.isEmpty {
-                        print("Candles \(label) empty prices")
                         onResult(.failure(URLError(.cannotParseResponse)))
                     } else {
                         onResult(.success(prices))
                     }
                 } catch {
-                    print("Candles \(label) decode error: \(error)")
                     onResult(.failure(error))
                 }
             }.resume()
@@ -458,7 +440,6 @@ class NetworkManager {
         ]
         
         guard seriesTicker != nil else {
-            print("Candles missing series ticker for \(marketTicker)")
             completion(.failure(URLError(.badURL)))
             return
         }
@@ -474,8 +455,6 @@ class NetworkManager {
                 completion(.failure(URLError(.badURL)))
                 return
             }
-            
-            print("Candles series URL: \(seriesReq.url?.absoluteString ?? "nil")")
             runRequest(seriesReq, label: "series \(seriesReq.url?.absoluteString ?? "")") { result in
                 switch result {
                 case .success(let prices):
@@ -519,16 +498,10 @@ class NetworkManager {
             
             do {
                 let decoder = JSONDecoder()
-                // decoder.keyDecodingStrategy = .convertFromSnakeCase // Fill has explicit keys, FillsResponse is simple
                 let response = try decoder.decode(FillsResponse.self, from: data)
                 completion(.success((response, jsonStr)))
             } catch {
-                print("Debug - Raw Fills Response: \(jsonStr)")
-                print("Debug - Decoding Error: \(error)")
-                // Create a custom error with the JSON snippet to show in UI
-                let snippet = String(jsonStr.prefix(500))
-                let debugError = NSError(domain: "KalshiAPI", code: -1, userInfo: [NSLocalizedDescriptionKey: "Decoding Failed: \(snippet)"])
-                completion(.failure(debugError))
+                completion(.failure(error))
             }
         }.resume()
     }
@@ -573,10 +546,7 @@ class NetworkManager {
                 let response = try decoder.decode(TradesResponse.self, from: data)
                 completion(.success(response))
             } catch {
-                if let str = String(data: data, encoding: .utf8) {
-                    print("Debug - fetchTrades JSON decode failed. Raw: \(str)")
-                }
-                completion(.failure(error)) 
+                completion(.failure(error))
             }
         }.resume()
     }
