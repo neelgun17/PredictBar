@@ -19,15 +19,7 @@ struct Position: Identifiable, Codable {
     
     // Alert state tracking
     var lastROI: Double? = nil
-    
-    // ROI State for transitioning alerts (Low, Neutral, High)
-    enum ROIState: String, Codable {
-        case low
-        case neutral
-        case high
-    }
-    var previousROIState: ROIState = .neutral
-    
+
     // History for sparklines
     var history: [Double] = []
     

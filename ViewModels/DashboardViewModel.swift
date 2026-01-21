@@ -17,11 +17,16 @@ class DashboardViewModel: ObservableObject {
     private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
     
     init() {
+        loadAlertStatesFromUserDefaults()
         setupBindings()
         fetchData()
         WebSocketManager.shared.connect()
     }
-    
+
+    deinit {
+        groupingTimer?.invalidate()
+    }
+
     private func setupBindings() {
         WebSocketManager.shared.$isConnected
             .receive(on: RunLoop.main)
@@ -116,7 +121,6 @@ class DashboardViewModel: ObservableObject {
                             merged.seriesTitle = existing.seriesTitle
                             merged.status = existing.status
                             merged.lastROI = existing.lastROI
-                            merged.previousROIState = existing.previousROIState
                             return merged
                         }
                         return newPos
@@ -309,17 +313,89 @@ class DashboardViewModel: ObservableObject {
     
     private var lastNotificationTime: Date?
     
+    // ROI State for transitioning alerts (Low, Neutral, High)
+    enum ROIState: String, Codable {
+        case low
+        case neutral
+        case high
+    }
+
+    // Alert types for notification grouping
+    enum AlertType: String {
+        case highROI = "High ROI"
+        case lowROI = "Low ROI"
+        case targetProfit = "Profit Target"
+        case targetPrice = "Price Target"
+
+        var emoji: String {
+            switch self {
+            case .highROI: return "🚀"
+            case .lowROI: return "📉"
+            case .targetProfit: return "💰"
+            case .targetPrice: return "🎯"
+            }
+        }
+    }
+
+    // Pending alert for grouping
+    struct PendingAlert {
+        let ticker: String
+        let type: AlertType
+        let title: String
+        let body: String
+        let url: URL?
+        let timestamp: Date
+    }
+
+    // Notification grouping state
+    private var pendingAlerts: [PendingAlert] = []
+    private var groupingTimer: Timer? = nil
+    private let alertGroupingWindow: TimeInterval = 2.0 // Group alerts within 2 seconds
+
     // Track the last state of each position to prevent spamming notifications
     // Key: Ticker, Value: State
-    private var positionAlertStates: [String: PositionAlertState] = [:]
-    
-    struct PositionAlertState {
-        var isAboveHighROI: Bool = false
-        var isBelowLowROI: Bool = false
+    private var positionAlertStates: [String: PositionAlertState] = [:] {
+        didSet {
+            persistAlertStatesToUserDefaults()
+        }
+    }
+
+    struct PositionAlertState: Codable {
+        var roiState: ROIState = .neutral
+        var lastHighROIAlertTime: Date? = nil
+        var lastLowROIAlertTime: Date? = nil
         var isAboveTargetProfit: Bool = false
         var isAboveTargetPrice: Bool = false
     }
-    
+
+    // MARK: - Alert State Persistence
+
+    private func persistAlertStatesToUserDefaults() {
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(positionAlertStates)
+            UserDefaults.standard.set(data, forKey: "positionAlertStates")
+        } catch {
+            print("⚠️ Failed to persist alert states: \(error)")
+        }
+    }
+
+    private func loadAlertStatesFromUserDefaults() {
+        guard let data = UserDefaults.standard.data(forKey: "positionAlertStates") else {
+            print("📊 No persisted alert states found, starting fresh")
+            return
+        }
+
+        do {
+            let decoder = JSONDecoder()
+            positionAlertStates = try decoder.decode([String: PositionAlertState].self, from: data)
+            print("✅ Loaded alert states for \(positionAlertStates.count) positions")
+        } catch {
+            print("⚠️ Failed to decode alert states, resetting: \(error)")
+            positionAlertStates = [:]
+        }
+    }
+
     private func checkThresholds() {
         let settingsVM = SettingsViewModel.shared
         
@@ -357,26 +433,28 @@ class DashboardViewModel: ObservableObject {
     }
     
     private func handleAlerts(for position: inout Position, newROI: Double, highThreshold: Double, lowThreshold: Double, targetProfit: Double?, targetPrice: Double?) {
-        let currentState = position.previousROIState
-        
+        let ticker = position.ticker
+        var state = positionAlertStates[ticker] ?? PositionAlertState()
+        let currentState = state.roiState
+
         // Determine new state based on thresholds
-        // Note: We use a hysteresis or simple transition. 
+        // Note: We use a hysteresis or simple transition.
         // Requirement: "fire a notification when transitioning neutral→high or neutral→low, and reset when back in neutral"
-        
-        var newState: Position.ROIState = currentState
-        
+
+        var newState: ROIState = currentState
+
         // Hysteresis Buffer: 3%
         // Prevents "flapping" alerts when ROI hovers near the threshold.
         // You must drop 3% below the High threshold (or rise 3% above Low) to reset to Neutral.
         let buffer = 3.0
-        
+
         if newROI >= highThreshold {
             newState = .high
         } else if newROI <= lowThreshold {
             newState = .low
         } else {
             // We are in the "middle" zone (between Low and High thresholds)
-            
+
             if currentState == .high {
                 // Only reset to Neutral if we drop significantly below the threshold
                 if newROI < (highThreshold - buffer) {
@@ -395,119 +473,335 @@ class DashboardViewModel: ObservableObject {
                 newState = .neutral
             }
         }
-        
-        // Check transitions
+
+        // Time-based deduplication: 5 minutes minimum between alerts
+        let minTimeBetweenAlerts: TimeInterval = 300 // 5 minutes
+
+        // Check transitions with time-based deduplication
         if currentState == .neutral && newState == .high {
-            sendNotification(
-                title: "High ROI Alert: \(position.title ?? position.ticker) 🚀",
-                body: "High ROI hit: \(position.realizedROI.formatted(.percent.precision(.fractionLength(1)))) — Profit: \(position.realizedPnL.formatted(.currency(code: "USD"))) (Sell @ \(position.currentPrice.formatted(.currency(code: "USD"))))",
-                url: position.marketUrl
-            )
+            let shouldSend: Bool
+            if let lastAlert = state.lastHighROIAlertTime {
+                shouldSend = Date().timeIntervalSince(lastAlert) >= minTimeBetweenAlerts
+            } else {
+                shouldSend = true
+            }
+
+            if shouldSend {
+                let title = formatNotificationTitle(
+                    marketTitle: position.title,
+                    ticker: position.ticker,
+                    alertType: AlertType.highROI.rawValue,
+                    emoji: AlertType.highROI.emoji
+                )
+                let body = formatNotificationBody(
+                    roi: position.realizedROI,
+                    pnl: position.realizedPnL,
+                    currentPrice: position.currentPrice
+                )
+                queueAlert(
+                    ticker: position.ticker,
+                    type: .highROI,
+                    title: title,
+                    body: body,
+                    url: position.marketUrl
+                )
+                state.lastHighROIAlertTime = Date()
+            }
         } else if currentState == .neutral && newState == .low {
-            sendNotification(
-                title: "Low ROI Alert: \(position.title ?? position.ticker) 📉",
-                body: "Low ROI hit: \(position.realizedROI.formatted(.percent.precision(.fractionLength(1)))) — Profit: \(position.realizedPnL.formatted(.currency(code: "USD"))) (Sell @ \(position.currentPrice.formatted(.currency(code: "USD"))))",
-                url: position.marketUrl
-            )
+            let shouldSend: Bool
+            if let lastAlert = state.lastLowROIAlertTime {
+                shouldSend = Date().timeIntervalSince(lastAlert) >= minTimeBetweenAlerts
+            } else {
+                shouldSend = true
+            }
+
+            if shouldSend {
+                let title = formatNotificationTitle(
+                    marketTitle: position.title,
+                    ticker: position.ticker,
+                    alertType: AlertType.lowROI.rawValue,
+                    emoji: AlertType.lowROI.emoji
+                )
+                let body = formatNotificationBody(
+                    roi: position.realizedROI,
+                    pnl: position.realizedPnL,
+                    currentPrice: position.currentPrice
+                )
+                queueAlert(
+                    ticker: position.ticker,
+                    type: .lowROI,
+                    title: title,
+                    body: body,
+                    url: position.marketUrl
+                )
+                state.lastLowROIAlertTime = Date()
+            }
         }
-        
-        // Update state on position
-        position.previousROIState = newState
-        
+
         // Check Target Profit (One-off)
         if let target = targetProfit {
-             var state = positionAlertStates[position.ticker] ?? PositionAlertState()
-             
-             if position.realizedPnL >= target {
-                 if !state.isAboveTargetProfit {
-                     sendNotification(
-                         title: "Profit Target Hit: \(position.title ?? position.ticker) 💰",
-                         body: "Profit reached \(position.realizedPnL.formatted(.currency(code: "USD")))! (Target: \(target.formatted(.currency(code: "USD"))))",
-                         url: position.marketUrl
-                     )
-                     state.isAboveTargetProfit = true
-                     positionAlertStates[position.ticker] = state
-                 }
-             } else {
-                 if state.isAboveTargetProfit {
-                     state.isAboveTargetProfit = false
-                     positionAlertStates[position.ticker] = state
-                 }
-             }
-         }
-         
-         // Check Target Price (One-off)
-         if let target = targetPrice {
-             let currentPrice = position.currentPrice
-             // Target Price is in cents (e.g. 50 for 50c). Current price is dollars (0.50).
-             if (currentPrice * 100) >= target {
-                 var state = positionAlertStates[position.ticker] ?? PositionAlertState()
-                 
-                 if !state.isAboveTargetPrice {
-                     sendNotification(
-                         title: "Price Target Hit: \(position.title ?? position.ticker) 🎯",
-                         body: "Price reached \(currentPrice.formatted(.currency(code: "USD")))! (Target: \(target.formatted())¢)",
-                         url: position.marketUrl
-                     )
-                     state.isAboveTargetPrice = true
-                     positionAlertStates[position.ticker] = state
-                 }
-             } else {
-                  var state = positionAlertStates[position.ticker] ?? PositionAlertState()
-                  if state.isAboveTargetPrice {
-                      state.isAboveTargetPrice = false
-                      positionAlertStates[position.ticker] = state
-                  }
-             }
-         }
+            if position.realizedPnL >= target {
+                if !state.isAboveTargetProfit {
+                    let title = formatNotificationTitle(
+                        marketTitle: position.title,
+                        ticker: position.ticker,
+                        alertType: AlertType.targetProfit.rawValue,
+                        emoji: AlertType.targetProfit.emoji
+                    )
+                    let body = formatNotificationBody(
+                        roi: position.realizedROI,
+                        pnl: position.realizedPnL,
+                        currentPrice: position.currentPrice,
+                        targetValue: target
+                    )
+                    queueAlert(
+                        ticker: position.ticker,
+                        type: .targetProfit,
+                        title: title,
+                        body: body,
+                        url: position.marketUrl
+                    )
+                    state.isAboveTargetProfit = true
+                }
+            } else {
+                if state.isAboveTargetProfit {
+                    state.isAboveTargetProfit = false
+                }
+            }
+        }
+
+        // Check Target Price (One-off)
+        if let target = targetPrice {
+            let currentPrice = position.currentPrice
+            // Target Price is in cents (e.g. 50 for 50c). Current price is dollars (0.50).
+            if (currentPrice * 100) >= target {
+                if !state.isAboveTargetPrice {
+                    let title = formatNotificationTitle(
+                        marketTitle: position.title,
+                        ticker: position.ticker,
+                        alertType: AlertType.targetPrice.rawValue,
+                        emoji: AlertType.targetPrice.emoji
+                    )
+                    let body = formatNotificationBody(
+                        roi: position.realizedROI,
+                        pnl: position.realizedPnL,
+                        currentPrice: position.currentPrice,
+                        targetValue: target / 100.0 // Convert cents to dollars
+                    )
+                    queueAlert(
+                        ticker: position.ticker,
+                        type: .targetPrice,
+                        title: title,
+                        body: body,
+                        url: position.marketUrl
+                    )
+                    state.isAboveTargetPrice = true
+                }
+            } else {
+                if state.isAboveTargetPrice {
+                    state.isAboveTargetPrice = false
+                }
+            }
+        }
+
+        // Update state in dictionary (after all checks)
+        state.roiState = newState
+        positionAlertStates[ticker] = state
     }
     
     private func checkPortfolioThresholds() {
         let highThreshold = SettingsViewModel.shared.highROIThreshold / 100.0
         let lowThreshold = SettingsViewModel.shared.lowROIThreshold / 100.0
-        
+
         var shouldNotify = false
         var title = ""
         var body = ""
-        
+
         let defaults = UserDefaults.standard
-        let calendar = Calendar.current
-        
+        let alertCooldown: TimeInterval = 24 * 60 * 60 // 24 hours in seconds
+
         // Skip alerts if we have positions but they haven't loaded prices yet (avoid false -100% ROI)
         if !positions.isEmpty && positions.contains(where: { $0.currentPrice == 0 }) {
             return
         }
-        
+
         // Check High Threshold
         if overallROI >= highThreshold {
             let lastHighDate = defaults.object(forKey: "lastPortfolioHighAlertDate") as? Date
-            
-            // Alert if never alerted, or if last alert was not today
-            if lastHighDate == nil || !calendar.isDateInToday(lastHighDate!) {
+
+            // Alert if never alerted, or if 24+ hours have passed
+            let shouldAlert: Bool
+            if let lastDate = lastHighDate {
+                shouldAlert = Date().timeIntervalSince(lastDate) >= alertCooldown
+            } else {
+                shouldAlert = true
+            }
+
+            if shouldAlert {
                 shouldNotify = true
-                title = "High Portfolio ROI 🚀"
+                title = "High Portfolio ROI"
                 body = "Your portfolio ROI is up to \(overallROI.formatted(.percent.precision(.fractionLength(1))))!"
                 defaults.set(Date(), forKey: "lastPortfolioHighAlertDate")
             }
-        } 
+        }
         // Check Low Threshold
         else if overallROI <= lowThreshold {
             let lastLowDate = defaults.object(forKey: "lastPortfolioLowAlertDate") as? Date
-            
-            // Alert if never alerted, or if last alert was not today
-            if lastLowDate == nil || !calendar.isDateInToday(lastLowDate!) {
+
+            // Alert if never alerted, or if 24+ hours have passed
+            let shouldAlert: Bool
+            if let lastDate = lastLowDate {
+                shouldAlert = Date().timeIntervalSince(lastDate) >= alertCooldown
+            } else {
+                shouldAlert = true
+            }
+
+            if shouldAlert {
                 shouldNotify = true
-                title = "Low Portfolio ROI 📉"
+                title = "Low Portfolio ROI"
                 body = "Your portfolio ROI has dropped to \(overallROI.formatted(.percent.precision(.fractionLength(1))))."
                 defaults.set(Date(), forKey: "lastPortfolioLowAlertDate")
             }
         }
-        
+
         if shouldNotify {
             sendNotification(title: title, body: body)
         }
     }
     
+    // MARK: - Notification Grouping
+
+    private func queueAlert(ticker: String, type: AlertType, title: String, body: String, url: URL?) {
+        let alert = PendingAlert(
+            ticker: ticker,
+            type: type,
+            title: title,
+            body: body,
+            url: url,
+            timestamp: Date()
+        )
+        pendingAlerts.append(alert)
+        scheduleGroupedNotification()
+    }
+
+    private func scheduleGroupedNotification() {
+        // Cancel existing timer if pending
+        groupingTimer?.invalidate()
+
+        // Schedule new timer to fire after grouping window
+        groupingTimer = Timer.scheduledTimer(
+            withTimeInterval: alertGroupingWindow,
+            repeats: false
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.sendGroupedNotifications()
+            }
+        }
+    }
+
+    private func sendGroupedNotifications() {
+        guard !pendingAlerts.isEmpty else { return }
+
+        if pendingAlerts.count == 1 {
+            // Send single notification
+            let alert = pendingAlerts[0]
+            sendNotification(title: alert.title, body: alert.body, url: alert.url)
+        } else {
+            // Send grouped notification
+            let title = "\(pendingAlerts.count) Position Alerts 📊"
+
+            var bodyLines: [String] = []
+            for (index, alert) in pendingAlerts.prefix(5).enumerated() {
+                // Find the position for this ticker to get the market title
+                if let position = positions.first(where: { $0.ticker == alert.ticker }) {
+                    let name = position.title.map { String($0.prefix(25)) } ?? alert.ticker
+                    // Extract ROI and PnL from the body (simplified for grouped view)
+                    let roi = position.realizedROI.formatted(.percent.precision(.fractionLength(0)))
+                    let pnl = position.realizedPnL.formatted(.currency(code: "USD"))
+                    bodyLines.append("\(index + 1). \(name): \(roi) (\(pnl))")
+                }
+            }
+
+            if pendingAlerts.count > 5 {
+                bodyLines.append("...and \(pendingAlerts.count - 5) more")
+            }
+
+            let body = bodyLines.joined(separator: "\n")
+
+            // Send with Kalshi homepage as fallback URL
+            sendNotification(
+                title: title,
+                body: body,
+                url: URL(string: "https://kalshi.com")
+            )
+        }
+
+        pendingAlerts.removeAll()
+    }
+
+    // MARK: - Notification Formatting
+
+    private func formatNotificationTitle(marketTitle: String?, ticker: String, alertType: String, emoji: String, maxLength: Int = 50) -> String {
+        // Reserve space for alert type, emoji, and spacing
+        let prefix = "\(alertType): "
+        let suffix = " \(emoji)"
+        let reserved = prefix.count + suffix.count
+        let availableLength = maxLength - reserved
+
+        let displayName = marketTitle ?? ticker
+
+        if displayName.count <= availableLength {
+            return "\(prefix)\(displayName)\(suffix)"
+        }
+
+        // Smart truncation strategy 1: Remove question marks and common filler words
+        let cleaned = displayName
+            .replacingOccurrences(of: "?", with: "")
+            .replacingOccurrences(of: " the ", with: " ", options: .caseInsensitive)
+            .replacingOccurrences(of: " in ", with: " ", options: .caseInsensitive)
+            .trimmingCharacters(in: .whitespaces)
+
+        if cleaned.count <= availableLength {
+            return "\(prefix)\(cleaned)\(suffix)"
+        }
+
+        // Strategy 2: Use first N words that fit
+        let words = displayName.split(separator: " ")
+        var truncated = ""
+        for word in words {
+            if truncated.isEmpty {
+                truncated = String(word)
+            } else if (truncated + " " + word).count <= availableLength - 3 { // Reserve "..."
+                truncated += " " + word
+            } else {
+                break
+            }
+        }
+
+        return "\(prefix)\(truncated)...\(suffix)"
+    }
+
+    private func formatNotificationBody(roi: Double, pnl: Double, currentPrice: Double, targetValue: Double? = nil) -> String {
+        var parts: [String] = []
+
+        // Always show ROI prominently
+        parts.append("ROI: \(roi.formatted(.percent.precision(.fractionLength(1))))")
+
+        // Show P&L with sign
+        let pnlSign = pnl >= 0 ? "+" : ""
+        parts.append("P&L: \(pnlSign)\(pnl.formatted(.currency(code: "USD")))")
+
+        // Show current sell price
+        parts.append("Sell @ \(currentPrice.formatted(.currency(code: "USD")))")
+
+        // Optional target reference
+        if let target = targetValue {
+            parts.append("(Target: \(target.formatted(.currency(code: "USD"))))")
+        }
+
+        return parts.joined(separator: " • ")
+    }
+
     private func sendNotification(title: String, body: String, url: URL? = nil) {
         // Ensure notifications are enabled globally before attempting to send
         guard SettingsViewModel.shared.notificationsEnabled else { return }
