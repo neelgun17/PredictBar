@@ -6,7 +6,7 @@ struct DropdownView: View {
     @Environment(\.openWindow) private var openWindow
     
     // 0: Cash Out, 1: ROI, 2: P&L, 3: Portfolio Value, 4: Account Balance
-    @State private var displayMode = 0
+    @State private var displayMode = 2
     @State private var configuringPosition: Position?
     @State private var hoveredTicker: String?
     
