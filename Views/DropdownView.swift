@@ -47,15 +47,7 @@ struct DropdownView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Refresh")
-                    
-                    Button(action: { openWindow(id: "backtesting") }) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Backtesting")
-                                        
+
                     Button(action: openSettings) {
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 12))

@@ -290,7 +290,7 @@ class NetworkManager {
         let low: Int?
     }
     
-    /// Public method to fetch candles for backtesting (replaces fetchTrades which is 404)
+    /// Fetch candlestick data for a market
     func fetchCandles(seriesTicker: String, marketTicker: String, startTs: Int, endTs: Int, completion: @escaping (Result<[Candlestick], Error>) -> Void) {
         var components = URLComponents(string: "/series/\(seriesTicker)/markets/\(marketTicker)/candlesticks")
         components?.queryItems = [
@@ -468,7 +468,7 @@ class NetworkManager {
         
     }
     
-    // MARK: - Backtesting Endpoints
+    // MARK: - Portfolio Endpoints
     
     struct FillsResponse: Decodable {
         let fills: [Fill]?
