@@ -121,7 +121,7 @@ struct Position: Identifiable, Codable {
     /// Executable sell price based on best-known bid/ask for this side
     /// yesBid/noBid/yesAsk/lastPrice are in dollars (0.00 - 1.00)
     func executableSellPrice(yesBid: Double?, noBid: Double?, yesAsk: Double?, lastPrice: Double?) -> Double? {
-        let isYes = quantity >= 0
+        let isYes = position > 0  // Use original signed position value
 
         if isYes {
             if let bid = yesBid { return bid } // best executable for long yes is yes bid
