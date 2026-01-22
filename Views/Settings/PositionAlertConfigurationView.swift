@@ -60,7 +60,19 @@ struct PositionAlertConfigurationView: View {
                 .padding(.leading, 4)
                 .transition(.opacity)
             }
-            
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("Arbitrage Alerts", isOn: $settings.arbitrageEnabled)
+                    .help("Alert when arbitrage opportunity detected for this position")
+
+                Text("Receive alerts when you can buy the opposite side and guarantee profit.")
+                    .font(.caption)
+                    .foregroundColor(.secondary.opacity(0.7))
+                    .padding(.leading, 24)
+            }
+
             HStack {
                 Spacer()
                 Button("Done") {

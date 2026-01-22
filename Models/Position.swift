@@ -1,6 +1,18 @@
 import Foundation
 
 struct Position: Identifiable, Codable {
+    // MARK: - Nested Types
+
+    struct ArbitrageOpportunity: Codable, Equatable {
+        let guaranteedProfit: Double      // Net profit after all fees
+        let oppositeSidePrice: Double     // Price to buy opposite side
+        let totalCostToHedge: Double      // Total cost including commission
+        let profitPerContract: Double     // Profit per contract
+        let timestamp: Date
+    }
+
+    // MARK: - Properties
+
     let ticker: String
     let position: Int
     let feesPaid: Int?
@@ -20,10 +32,18 @@ struct Position: Identifiable, Codable {
     // Alert state tracking
     var lastROI: Double? = nil
 
+    // Price tracking for arbitrage detection
+    var yesBid: Double? = nil
+    var yesAsk: Double? = nil
+    var noBid: Double? = nil
+    var noAsk: Double? = nil
+    var lastArbitrageOpportunity: ArbitrageOpportunity? = nil
+
     // History for sparklines
     var history: [Double] = []
-    
-    // Computed properties for app compatibility
+
+    // MARK: - Computed Properties
+
     var id: String { ticker }
     var marketTicker: String { ticker }
     var quantity: Int { abs(position) }
@@ -127,7 +147,54 @@ struct Position: Identifiable, Codable {
         if let bid = yesBid { return isYes ? bid : (1.0 - bid) }
         return nil
     }
-    
+
+    /// Detects if an arbitrage opportunity exists for this position
+    /// Returns ArbitrageOpportunity if profitable, nil otherwise
+    func detectArbitrage(minimumProfit: Double = 0.01) -> ArbitrageOpportunity? {
+        guard position != 0 else { return nil }
+
+        let contracts = Double(abs(position))
+        let isYesPosition = position > 0
+
+        // Determine price to buy opposite side
+        let oppositeSideAsk: Double?
+        if isYesPosition {
+            // For YES position, need to buy NO at noAsk
+            oppositeSideAsk = noAsk ?? yesAsk.map { 1.0 - $0 }
+        } else {
+            // For NO position, need to buy YES at yesAsk
+            oppositeSideAsk = yesAsk
+        }
+
+        guard let oppositePrice = oppositeSideAsk, oppositePrice > 0 else {
+            return nil
+        }
+
+        // Calculate costs
+        let originalCost = totalCostBasis
+        let oppositeSideGross = contracts * oppositePrice
+
+        // Commission: 7% of contracts * price * (1 - price), rounded to nearest cent
+        let rawCommission = 0.07 * contracts * oppositePrice * (1.0 - oppositePrice)
+        let commission = (rawCommission * 100.0).rounded(.toNearestOrAwayFromZero) / 100.0
+
+        let totalCostToHedge = oppositeSideGross + commission
+        let totalInvested = originalCost + totalCostToHedge
+        let guaranteedPayout = contracts * 1.0
+        let netProfit = guaranteedPayout - totalInvested
+        let profitPerContract = netProfit / contracts
+
+        guard netProfit >= minimumProfit else { return nil }
+
+        return ArbitrageOpportunity(
+            guaranteedProfit: netProfit,
+            oppositeSidePrice: oppositePrice,
+            totalCostToHedge: totalCostToHedge,
+            profitPerContract: profitPerContract,
+            timestamp: Date()
+        )
+    }
+
     enum CodingKeys: String, CodingKey {
         case ticker
         case position
@@ -138,5 +205,9 @@ struct Position: Identifiable, Codable {
         case title
         case subtitle
         case eventTicker
+        case yesBid
+        case yesAsk
+        case noBid
+        case noAsk
     }
 }

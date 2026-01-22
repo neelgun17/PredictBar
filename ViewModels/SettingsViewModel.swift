@@ -36,7 +36,15 @@ class SettingsViewModel: ObservableObject {
     @Published var autoEnableNewAlerts: Bool {
         didSet { UserDefaults.standard.set(autoEnableNewAlerts, forKey: "autoEnableNewAlerts") }
     }
-    
+
+    @Published var minimumArbitrageProfit: Double = 1.0 {
+        didSet { UserDefaults.standard.set(minimumArbitrageProfit, forKey: "minimumArbitrageProfit") }
+    }
+
+    @Published var arbitrageAlertsEnabled: Bool = false {
+        didSet { UserDefaults.standard.set(arbitrageAlertsEnabled, forKey: "arbitrageAlertsEnabled") }
+    }
+
     @Published var alertSettings: [String: AlertSettings] {
         didSet {
             if let encoded = try? JSONEncoder().encode(alertSettings) {
@@ -51,28 +59,35 @@ class SettingsViewModel: ObservableObject {
     
     private init() {
         let defaults = UserDefaults.standard
-        
+
         self.menuBarMetric = defaults.string(forKey: "menuBarMetric") ?? "Cash Out"
         self.appearanceMode = defaults.string(forKey: "appearanceMode") ?? "System"
         self.compactMode = defaults.bool(forKey: "compactMode")
         self.notificationsEnabled = defaults.bool(forKey: "notificationsEnabled")
         self.autoEnableNewAlerts = defaults.bool(forKey: "autoEnableNewAlerts")
-        
+
         if let data = defaults.data(forKey: "alertSettings"),
            let decoded = try? JSONDecoder().decode([String: AlertSettings].self, from: data) {
             self.alertSettings = decoded
         } else {
             self.alertSettings = [:]
         }
-        
+
         // Handle potential missing keys for thresholds by setting defaults if 0 (unless 0 is valid, but for thresholds usually not default)
         // Better to just read and if nil/0 use default.
         let high = defaults.double(forKey: "highROIThreshold")
         self.highROIThreshold = high == 0 ? 20.0 : high
-        
+
         let low = defaults.double(forKey: "lowROIThreshold")
         self.lowROIThreshold = low == 0 ? -20.0 : low
-        
+
+        // Initialize arbitrage settings
+        let minArb = defaults.double(forKey: "minimumArbitrageProfit")
+        self.minimumArbitrageProfit = minArb == 0 ? 1.0 : minArb  // Default $1 minimum
+
+        self.arbitrageAlertsEnabled = defaults.bool(forKey: "arbitrageAlertsEnabled")
+
+        // All properties initialized, safe to call methods on self
         loadCredentialsState()
     }
     
@@ -130,4 +145,5 @@ struct AlertSettings: Codable, Equatable {
     var lowROI: Double?
     var targetProfit: Double?
     var targetPrice: Double?
+    var arbitrageEnabled: Bool = true  // Per-position arbitrage toggle
 }

@@ -82,7 +82,44 @@ struct NotificationSettingsView: View {
                 .padding(.leading, 24)
                 .opacity(viewModel.notificationsEnabled ? 1.0 : 0.5)
             }
-            
+
+            Divider()
+                .padding(.vertical, 8)
+
+            VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Arbitrage Detection")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+
+                    Toggle("Enable Arbitrage Alerts", isOn: $viewModel.arbitrageAlertsEnabled)
+                        .disabled(!viewModel.notificationsEnabled)
+
+                    Text("Detect when you can buy the opposite side and guarantee profit.")
+                        .font(.caption)
+                        .foregroundColor(.secondary.opacity(0.7))
+                        .padding(.leading, 24)
+                }
+                .padding(.bottom, 8)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Minimum Profit")
+                            .frame(width: 100, alignment: .leading)
+                        TextField("", value: $viewModel.minimumArbitrageProfit, format: .currency(code: "USD"))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 80)
+                            .disabled(!viewModel.notificationsEnabled || !viewModel.arbitrageAlertsEnabled)
+
+                        Text("Only alert when guaranteed profit exceeds this amount")
+                            .font(.caption)
+                            .foregroundColor(.secondary.opacity(0.7))
+                    }
+                }
+                .padding(.leading, 24)
+                .opacity(viewModel.notificationsEnabled && viewModel.arbitrageAlertsEnabled ? 1.0 : 0.5)
+            }
+
             Spacer()
         }
         .padding(.top, 20)

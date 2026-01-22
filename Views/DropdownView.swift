@@ -141,20 +141,39 @@ struct DropdownView: View {
                                                 }
                                             }
                                             .animation(.easeInOut(duration: 0.15), value: hoveredTicker == position.ticker)
-                                            
+
                                             VStack(alignment: .leading, spacing: 2) {
                                                 HStack(spacing: 4) {
                                                     Text(position.subtitle ?? position.side)
                                                         .font(.system(size: 11))
                                                         .foregroundColor(.primary.opacity(0.65))
-                                                    
+
                                                     Text("·")
                                                         .font(.system(size: 11))
                                                         .foregroundColor(.primary.opacity(0.4))
-                                                    
+
                                                     Text("Qty: \(position.quantity)")
                                                         .font(.system(size: 11))
                                                         .foregroundColor(.primary.opacity(0.65))
+
+                                                    // Compact arbitrage badge inline
+                                                    if let arb = position.lastArbitrageOpportunity {
+                                                        Text("·")
+                                                            .font(.system(size: 11))
+                                                            .foregroundColor(.primary.opacity(0.4))
+
+                                                        HStack(spacing: 2) {
+                                                            Image(systemName: "scalemass.fill")
+                                                                .font(.system(size: 7))
+                                                            Text("+\(arb.guaranteedProfit, format: .currency(code: "USD"))")
+                                                                .font(.system(size: 9, weight: .semibold))
+                                                        }
+                                                        .padding(.horizontal, 3)
+                                                        .padding(.vertical, 1)
+                                                        .background(Color.green.opacity(0.15))
+                                                        .foregroundColor(.green)
+                                                        .cornerRadius(3)
+                                                    }
                                                 }
                                                 
                                                 HStack(spacing: 4) {
@@ -172,6 +191,8 @@ struct DropdownView: View {
                                                         }) {
                                                             Text("Sell \(position.currentPrice, format: .currency(code: "USD"))")
                                                                 .font(.system(size: 10, weight: .bold))
+                                                                .lineLimit(1) // Prevent wrapping
+                                                                .fixedSize()  // Force full width
                                                                 .foregroundColor(.white)
                                                                 .padding(.horizontal, 6)
                                                                 .padding(.vertical, 2)
@@ -189,6 +210,8 @@ struct DropdownView: View {
                                                     } else {
                                                         Text("Sell \(position.currentPrice, format: .currency(code: "USD"))")
                                                             .font(.system(size: 10, weight: .bold))
+                                                            .lineLimit(1)
+                                                            .fixedSize()
                                                             .foregroundColor(.secondary)
                                                             .padding(.horizontal, 6)
                                                             .padding(.vertical, 2)
@@ -213,6 +236,37 @@ struct DropdownView: View {
                                                             NSCursor.pointingHand.push()
                                                         } else {
                                                             NSCursor.pop()
+                                                        }
+                                                    }
+
+                                                    // Arbitrage Hedge button - compact version
+                                                    if let arb = position.lastArbitrageOpportunity,
+                                                       let hedgeURL = hedgeUrl(for: position, opportunity: arb) {
+                                                        Button(action: {
+                                                            NSWorkspace.shared.open(hedgeURL)
+                                                        }) {
+                                                            HStack(spacing: 2) {
+                                                                Image(systemName: "scalemass.fill")
+                                                                    .font(.system(size: 7))
+                                                                Text("Hedge")
+                                                                    .font(.system(size: 10, weight: .bold))
+                                                                    .lineLimit(1)
+                                                                    .fixedSize()
+                                                            }
+                                                            .foregroundColor(.white)
+                                                            .padding(.horizontal, 5)
+                                                            .padding(.vertical, 2)
+                                                            .background(Color.green)
+                                                            .cornerRadius(4)
+                                                        }
+                                                        .buttonStyle(.plain)
+                                                        .help("Guaranteed profit: \(arb.guaranteedProfit.formatted(.currency(code: "USD")))")
+                                                        .onHover { inside in
+                                                            if inside {
+                                                                NSCursor.pointingHand.push()
+                                                            } else {
+                                                                NSCursor.pop()
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -411,6 +465,37 @@ struct DropdownView: View {
             URLQueryItem(name: "action", value: "sell"),
             URLQueryItem(name: "side", value: side),
             URLQueryItem(name: "quantity", value: "\(qty)")
+        ]
+        return components.url
+    }
+
+    private func hedgeUrl(for position: Position, opportunity: Position.ArbitrageOpportunity) -> URL? {
+        let oppositeSide = position.position > 0 ? "no" : "yes"
+        let qty = abs(position.quantity)
+
+        // Prefer the resolved market URL
+        if let marketUrl = position.marketUrl,
+           var components = URLComponents(url: marketUrl, resolvingAgainstBaseURL: false) {
+            var items = components.queryItems ?? []
+            items.append(URLQueryItem(name: "tab", value: "trade"))
+            items.append(URLQueryItem(name: "action", value: "buy"))
+            items.append(URLQueryItem(name: "side", value: oppositeSide))
+            items.append(URLQueryItem(name: "quantity", value: "\(qty)"))
+            items.append(URLQueryItem(name: "limit_price", value: String(format: "%.2f", opportunity.oppositeSidePrice)))
+            components.queryItems = items
+            return components.url
+        }
+
+        // Fallback
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "kalshi.com"
+        components.path = "/trade/\(position.ticker.lowercased())"
+        components.queryItems = [
+            URLQueryItem(name: "action", value: "buy"),
+            URLQueryItem(name: "side", value: oppositeSide),
+            URLQueryItem(name: "quantity", value: "\(qty)"),
+            URLQueryItem(name: "limit_price", value: String(format: "%.2f", opportunity.oppositeSidePrice))
         ]
         return components.url
     }

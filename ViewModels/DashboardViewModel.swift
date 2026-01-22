@@ -171,7 +171,13 @@ class DashboardViewModel: ObservableObject {
                                         let noBid = market.noBid.map { Double($0) / 100.0 }
                                         let yesAsk = market.yesAsk.map { Double($0) / 100.0 }
                                         let lastPrice = market.lastPrice.map { Double($0) / 100.0 }
-                                        
+
+                                        // Store all bid/ask prices for arbitrage detection
+                                        updatedPosition?.yesBid = yesBid
+                                        updatedPosition?.yesAsk = yesAsk
+                                        updatedPosition?.noBid = noBid
+                                        updatedPosition?.noAsk = market.noAsk.map { Double($0) / 100.0 }
+
                                         if !isActive, let last = lastPrice, last > 0 {
                                             // Market is closed/settling, trust the last trade price
                                             updatedPosition?.currentPrice = last
@@ -326,6 +332,7 @@ class DashboardViewModel: ObservableObject {
         case lowROI = "Low ROI"
         case targetProfit = "Profit Target"
         case targetPrice = "Price Target"
+        case arbitrage = "Arbitrage"
 
         var emoji: String {
             switch self {
@@ -333,6 +340,7 @@ class DashboardViewModel: ObservableObject {
             case .lowROI: return "📉"
             case .targetProfit: return "💰"
             case .targetPrice: return "🎯"
+            case .arbitrage: return "⚖️"
             }
         }
     }
@@ -366,6 +374,8 @@ class DashboardViewModel: ObservableObject {
         var lastLowROIAlertTime: Date? = nil
         var isAboveTargetProfit: Bool = false
         var isAboveTargetPrice: Bool = false
+        var lastArbitrageAlertTime: Date? = nil
+        var lastArbitrageProfit: Double? = nil
     }
 
     // MARK: - Alert State Persistence
@@ -425,7 +435,10 @@ class DashboardViewModel: ObservableObject {
             let newROI = position.realizedROI * 100.0
             
             handleAlerts(for: &position, newROI: newROI, highThreshold: highThreshold, lowThreshold: lowThreshold, targetProfit: targetProfit, targetPrice: targetPrice)
-            
+
+            // Check for arbitrage opportunities
+            checkArbitrageOpportunity(for: &position)
+
             // Update lastROI (still useful for debugging or other logic, but state drives alerts now)
             position.lastROI = newROI
             positions[index] = position
@@ -608,7 +621,69 @@ class DashboardViewModel: ObservableObject {
         state.roiState = newState
         positionAlertStates[ticker] = state
     }
-    
+
+    private func checkArbitrageOpportunity(for position: inout Position) {
+        let ticker = position.ticker
+        var state = positionAlertStates[ticker] ?? PositionAlertState()
+
+        // Get settings
+        let minProfit = SettingsViewModel.shared.minimumArbitrageProfit
+        let settings = SettingsViewModel.shared.getAlertSettings(for: ticker)
+
+        // Skip if disabled or market not active
+        guard settings.isEnabled, settings.arbitrageEnabled, position.status == "active" else {
+            position.lastArbitrageOpportunity = nil
+            return
+        }
+
+        // Detect arbitrage
+        if let opportunity = position.detectArbitrage(minimumProfit: minProfit) {
+            position.lastArbitrageOpportunity = opportunity
+
+            // Determine if we should notify
+            var shouldNotify = false
+            let minTimeBetweenAlerts: TimeInterval = 300 // 5 minutes
+
+            if let lastAlert = state.lastArbitrageAlertTime,
+               let lastProfit = state.lastArbitrageProfit {
+                let timeSinceLastAlert = Date().timeIntervalSince(lastAlert)
+                let profitIncrease = opportunity.guaranteedProfit - lastProfit
+
+                shouldNotify = timeSinceLastAlert >= minTimeBetweenAlerts && profitIncrease >= 1.0
+            } else {
+                shouldNotify = true  // First detection
+            }
+
+            if shouldNotify {
+                let title = formatNotificationTitle(
+                    marketTitle: position.title,
+                    ticker: position.ticker,
+                    alertType: AlertType.arbitrage.rawValue,
+                    emoji: AlertType.arbitrage.emoji
+                )
+
+                let body = "Guaranteed: +\(opportunity.guaranteedProfit.formatted(.currency(code: "USD"))) " +
+                           "(\(opportunity.profitPerContract.formatted(.currency(code: "USD")))/contract) • " +
+                           "Buy opposite @ \(opportunity.oppositeSidePrice.formatted(.currency(code: "USD")))"
+
+                queueAlert(
+                    ticker: position.ticker,
+                    type: .arbitrage,
+                    title: title,
+                    body: body,
+                    url: position.marketUrl
+                )
+
+                state.lastArbitrageAlertTime = Date()
+                state.lastArbitrageProfit = opportunity.guaranteedProfit
+            }
+        } else {
+            position.lastArbitrageOpportunity = nil
+        }
+
+        positionAlertStates[ticker] = state
+    }
+
     private func checkPortfolioThresholds() {
         let highThreshold = SettingsViewModel.shared.highROIThreshold / 100.0
         let lowThreshold = SettingsViewModel.shared.lowROIThreshold / 100.0
@@ -835,6 +910,15 @@ class DashboardViewModel: ObservableObject {
         let yesAsk = quote.yesAsk.map { Double($0) / 100.0 }
         let lastPrice = quote.lastPrice.map { Double($0) / 100.0 }
 
+        // Store YES prices from WebSocket
+        position.yesBid = yesBid
+        position.yesAsk = yesAsk
+
+        // WebSocket stream does not carry noBid; derive from yesAsk if available
+        if let yesAsk = yesAsk, position.noBid == nil {
+            position.noBid = 1.0 - yesAsk
+        }
+
         // WebSocket stream does not carry noBid; fall back to derived price for "No"
         let executable = position.executableSellPrice(yesBid: yesBid, noBid: nil, yesAsk: yesAsk, lastPrice: lastPrice)
 
@@ -844,6 +928,10 @@ class DashboardViewModel: ObservableObject {
             if position.history.count > 50 { // Keep last 50 points
                 position.history.removeFirst()
             }
+
+            // Check for arbitrage after price update
+            checkArbitrageOpportunity(for: &position)
+
             positions[index] = position
             calculateTotals()
         }
