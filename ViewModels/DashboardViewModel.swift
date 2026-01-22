@@ -333,6 +333,7 @@ class DashboardViewModel: ObservableObject {
         case targetProfit = "Profit Target"
         case targetPrice = "Price Target"
         case arbitrage = "Arbitrage"
+        case stopLoss = "Stop-Loss"
 
         var emoji: String {
             switch self {
@@ -341,6 +342,7 @@ class DashboardViewModel: ObservableObject {
             case .targetProfit: return "💰"
             case .targetPrice: return "🎯"
             case .arbitrage: return "⚖️"
+            case .stopLoss: return "🛑"
             }
         }
     }
@@ -376,6 +378,10 @@ class DashboardViewModel: ObservableObject {
         var isAboveTargetPrice: Bool = false
         var lastArbitrageAlertTime: Date? = nil
         var lastArbitrageProfit: Double? = nil
+
+        // Stop-loss state tracking
+        var stopLossTriggered: Bool = false       // True when threshold breached
+        var lastStopLossAlertTime: Date? = nil    // For 5-minute deduplication
     }
 
     // MARK: - Alert State Persistence
@@ -438,6 +444,9 @@ class DashboardViewModel: ObservableObject {
 
             // Check for arbitrage opportunities
             checkArbitrageOpportunity(for: &position)
+
+            // Check for stop-loss threshold breaches
+            checkStopLoss(for: &position)
 
             // Update lastROI (still useful for debugging or other logic, but state drives alerts now)
             position.lastROI = newROI
@@ -679,6 +688,122 @@ class DashboardViewModel: ObservableObject {
             }
         } else {
             position.lastArbitrageOpportunity = nil
+        }
+
+        positionAlertStates[ticker] = state
+    }
+
+    private func checkStopLoss(for position: inout Position) {
+        let ticker = position.ticker
+        var state = positionAlertStates[ticker] ?? PositionAlertState()
+
+        // Get stop-loss settings
+        let settings = SettingsViewModel.shared.getAlertSettings(for: ticker)
+        let minPrice = settings.stopLossMinPrice
+        let minProfit = settings.stopLossMinProfit
+
+        // Skip if no thresholds configured
+        guard minPrice != nil || minProfit != nil else { return }
+
+        // Skip if price hasn't loaded yet
+        guard position.currentPrice > 0 else { return }
+
+        // Current values
+        let currentPriceCents = position.currentPrice * 100.0
+        let currentProfit = position.realizedPnL
+
+        // 3% hysteresis buffer (consistent with ROI alerts)
+        let priceBuffer = 3.0  // 3 cents
+        let profitBufferPercent = 0.03  // 3% of threshold
+
+        // Check if EITHER threshold is breached (OR logic)
+        var isBelowThreshold = false
+        var breachedType = ""
+        var breachedValue: Double = 0.0
+
+        if let minPriceCents = minPrice, currentPriceCents <= minPriceCents {
+            isBelowThreshold = true
+            breachedType = "price"
+            breachedValue = minPriceCents / 100.0
+        } else if let minProfitDollars = minProfit, currentProfit <= minProfitDollars {
+            isBelowThreshold = true
+            breachedType = "profit"
+            breachedValue = minProfitDollars
+        }
+
+        // State transition logic
+        if isBelowThreshold {
+            // Breach detected - send alert if not already triggered
+            if !state.stopLossTriggered {
+                // Time-based deduplication: 5 minutes minimum
+                let shouldSend: Bool
+                if let lastAlert = state.lastStopLossAlertTime {
+                    shouldSend = Date().timeIntervalSince(lastAlert) >= 300  // 5 minutes
+                } else {
+                    shouldSend = true
+                }
+
+                if shouldSend {
+                    let title = formatNotificationTitle(
+                        marketTitle: position.title,
+                        ticker: position.ticker,
+                        alertType: AlertType.stopLoss.rawValue,
+                        emoji: AlertType.stopLoss.emoji
+                    )
+
+                    let body: String
+                    if breachedType == "price" {
+                        body = "Price dropped to \(position.currentPrice.formatted(.currency(code: "USD"))) " +
+                               "(Min: \(breachedValue.formatted(.currency(code: "USD")))) • " +
+                               formatNotificationBody(
+                                   roi: position.realizedROI,
+                                   pnl: position.realizedPnL,
+                                   currentPrice: position.currentPrice
+                               )
+                    } else {
+                        body = "P&L dropped to \(currentProfit.formatted(.currency(code: "USD"))) " +
+                               "(Min: \(breachedValue.formatted(.currency(code: "USD")))) • " +
+                               formatNotificationBody(
+                                   roi: position.realizedROI,
+                                   pnl: position.realizedPnL,
+                                   currentPrice: position.currentPrice
+                               )
+                    }
+
+                    queueAlert(
+                        ticker: position.ticker,
+                        type: .stopLoss,
+                        title: title,
+                        body: body,
+                        url: position.marketUrl
+                    )
+
+                    state.stopLossTriggered = true
+                    state.lastStopLossAlertTime = Date()
+                }
+            }
+        } else {
+            // Check if price has recovered above threshold + buffer (reset condition)
+            var hasRecovered = false
+
+            if let minPriceCents = minPrice {
+                let recoveryThreshold = minPriceCents + priceBuffer
+                if currentPriceCents > recoveryThreshold {
+                    hasRecovered = true
+                }
+            }
+
+            if let minProfitDollars = minProfit {
+                let recoveryThreshold = minProfitDollars + (abs(minProfitDollars) * profitBufferPercent)
+                if currentProfit > recoveryThreshold {
+                    hasRecovered = true
+                }
+            }
+
+            if hasRecovered && state.stopLossTriggered {
+                // Price recovered - reset state to allow future alerts
+                state.stopLossTriggered = false
+            }
         }
 
         positionAlertStates[ticker] = state

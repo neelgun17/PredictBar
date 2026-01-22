@@ -146,4 +146,8 @@ struct AlertSettings: Codable, Equatable {
     var targetProfit: Double?
     var targetPrice: Double?
     var arbitrageEnabled: Bool = true  // Per-position arbitrage toggle
+
+    // Stop-loss thresholds (downside protection)
+    var stopLossMinPrice: Double?    // Minimum price in cents (0-100)
+    var stopLossMinProfit: Double?   // Minimum profit in dollars
 }

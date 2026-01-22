@@ -73,6 +73,43 @@ struct PositionAlertConfigurationView: View {
                     .padding(.leading, 24)
             }
 
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Stop-Loss Protection")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+
+                Text("Alert when position drops below threshold (triggers once, resets when price recovers)")
+                    .font(.caption)
+                    .foregroundColor(.secondary.opacity(0.7))
+                    .padding(.bottom, 4)
+
+                HStack {
+                    Text("Min Price (¢)")
+                        .frame(width: 100, alignment: .leading)
+                    TextField("Optional", value: $settings.stopLossMinPrice, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+
+                    Text("Alert if price ≤ this")
+                        .font(.caption)
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
+
+                HStack {
+                    Text("Min Profit ($)")
+                        .frame(width: 100, alignment: .leading)
+                    TextField("Optional", value: $settings.stopLossMinProfit, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+
+                    Text("Alert if P&L ≤ this (can be negative)")
+                        .font(.caption)
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
+            }
+
             HStack {
                 Spacer()
                 Button("Done") {
