@@ -2,7 +2,7 @@ import SwiftUI
 import UserNotifications
 
 @main
-struct KalshiMenuBarApp: App {
+struct PredictBarApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var dashboardViewModel = DashboardViewModel()
     @AppStorage("appearanceMode") private var appearanceMode: String = "System"
@@ -51,14 +51,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     // Handle notification click
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         // Extract ticker from title or body if needed, but easier if we attach it to userInfo
-        // For now, let's just open the main Kalshi site or try to parse the ticker
-        // Ideally, we should pass the URL in the notification payload
+        // Try to open the URL from the notification payload
         
         let userInfo = response.notification.request.content.userInfo
         if let urlString = userInfo["url"] as? String, let url = URL(string: urlString) {
             NSWorkspace.shared.open(url)
         } else {
-            // Fallback: Open Kalshi homepage
+            // Fallback: Open homepage
             if let url = URL(string: "https://kalshi.com") {
                 NSWorkspace.shared.open(url)
             }

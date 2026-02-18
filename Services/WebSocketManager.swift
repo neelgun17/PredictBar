@@ -68,7 +68,7 @@ class WebSocketManager: ObservableObject {
         
         // Retrieve credentials securely
         guard let credentials = try? CredentialsManager.shared.get() else {
-            print("❌ WebSocket connection failed: Missing Kalshi API credentials.")
+            print("❌ WebSocket connection failed: Missing API credentials.")
             return nil
         }
         
@@ -107,7 +107,7 @@ class WebSocketManager: ObservableObject {
         self.subscribedTickers = tickers
         
         // Construct the subscription message
-        // Note: Kalshi API expects "market_tickers" in params to filter
+        // Kalshi API expects "market_tickers" in params to filter
         let params: [String: Any] = [
             "channels": ["ticker"],
             "market_tickers": tickers

@@ -8,7 +8,7 @@ struct APISettingsView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Kalshi API Credentials")
+            Text("API Credentials")
                 .font(.headline)
             
             VStack(alignment: .leading, spacing: 12) {

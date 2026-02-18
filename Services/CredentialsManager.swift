@@ -1,12 +1,11 @@
 import Foundation
 import Security
 
-/// Manages secure storage and retrieval of Kalshi API credentials using the macOS Keychain.
-/// Ensures secrets are never stored in plaintext on disk or logged.
+/// Manages secure storage and retrieval of API credentials using the macOS Keychain.
 class CredentialsManager {
     static let shared = CredentialsManager()
     
-    private let service = "com.kalshimenubar"
+    private let service = "com.predictbar.app"
     private let accessKeyAccount = "kalshi-access-key"
     private let secretKeyAccount = "kalshi-access-secret"
     
@@ -41,7 +40,7 @@ class CredentialsManager {
         
         // Update cache
         cachedCredentials = (apiKey, privateKey)
-        print("✅ Kalshi credentials saved securely to Keychain.")
+        print("✅ Credentials saved securely to Keychain.")
     }
     
     /// Retrieves the API Key and Private Key from the Keychain.
@@ -69,7 +68,7 @@ class CredentialsManager {
         
         // Clear cache
         cachedCredentials = nil
-        print("🗑️ Kalshi credentials removed from Keychain.")
+        print("🗑️ Credentials removed from Keychain.")
     }
     
     /// Checks if credentials exist in the Keychain without retrieving the secrets.

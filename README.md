@@ -1,6 +1,6 @@
-# Kalshi Menu Bar
+# PredictBar
 
-A native macOS menu bar application for tracking your Kalshi portfolio, positions, and ROI in real-time.
+A native macOS menu bar application for tracking your prediction market portfolio, positions, and ROI in real-time.
 
 ![macOS](https://img.shields.io/badge/macOS-13.0%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange)
@@ -35,17 +35,17 @@ Add screenshots here:
 
 ### Option 1: Download from GitHub Releases
 
-1. Go to the [Releases](https://github.com/neelgun17/KalshiMenuBar/releases) page
-2. Download the latest `KalshiMenuBar-vX.X.X.zip`
-3. Unzip and drag `KalshiMenuBar.app` to your Applications folder
-4. Open the app — the Kalshi icon will appear in your menu bar
+1. Go to the [Releases](https://github.com/neelgun17/PredictBar/releases) page
+2. Download the latest `PredictBar-vX.X.X.zip`
+3. Unzip and drag `PredictBar.app` to your Applications folder
+4. Open the app — the icon will appear in your menu bar
 
 ### Option 2: Build from Source
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/neelgun17/KalshiMenuBar.git
-   cd KalshiMenuBar
+   git clone https://github.com/neelgun17/PredictBar.git
+   cd PredictBar
    ```
 
 2. **Build and run**:
@@ -66,11 +66,11 @@ Add screenshots here:
    CODESIGN_IDENTITY="Apple Development" make run
    ```
 
-3. The Kalshi icon will appear in your menu bar.
+3. The icon will appear in your menu bar.
 
 ## Setup
 
-### 1. Get Your Kalshi API Keys
+### 1. Get Your API Keys
 
 1. Log in to [Kalshi](https://kalshi.com)
 2. Go to **Settings** > **API** in your account
@@ -82,7 +82,7 @@ Add screenshots here:
 
 ### 2. Configure the App
 
-1. Click the **Kalshi icon** in your menu bar
+1. Click the **PredictBar icon** in your menu bar
 2. Click **Settings** (or press `Cmd + ,`)
 3. Go to the **API** tab
 4. Enter your **API Key** and **Private Key**
@@ -141,9 +141,9 @@ make debug
 ## Privacy & Security
 
 - **Credentials** are stored in the macOS Keychain, not in plain text files
-- **No data** is sent to any servers other than Kalshi's official API
+- **No data** is sent to any servers other than the Kalshi API
 - **No analytics** or tracking of any kind
-- All communication uses **HTTPS** with Kalshi's API
+- All communication uses **HTTPS**
 
 ## License
 

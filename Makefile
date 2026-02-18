@@ -1,4 +1,4 @@
-APP_NAME := KalshiMenuBar
+APP_NAME := PredictBar
 BUNDLE := $(APP_NAME).app
 BUILD_DIR := .build
 CODESIGN_IDENTITY ?= -

@@ -2,10 +2,10 @@
 
 ## Reporting a Vulnerability
 
-This application handles financial API credentials (Kalshi API keys and RSA private keys). If you discover a security vulnerability, **please do not open a public issue**.
+This application handles financial API credentials (API keys and RSA private keys). If you discover a security vulnerability, **please do not open a public issue**.
 
 Instead, report it privately:
-- Email: [open an issue marked "security"](https://github.com/neelgun17/KalshiMenuBar/issues) with the title **[SECURITY]** and minimal details, then share the full report privately via the contact method provided in the response.
+- Email: [open an issue marked "security"](https://github.com/neelgun17/PredictBar/issues) with the title **[SECURITY]** and minimal details, then share the full report privately via the contact method provided in the response.
 
 ## Scope
 

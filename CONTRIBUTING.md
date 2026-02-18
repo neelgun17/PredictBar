@@ -1,12 +1,12 @@
-# Contributing to Kalshi Menu Bar
+# Contributing to PredictBar
 
 ## Development Setup
 
 1. **Requirements**: macOS 13.0+, Swift 5.9+ (included with Xcode 15+)
 2. Clone and build:
    ```bash
-   git clone https://github.com/neelgun17/KalshiMenuBar.git
-   cd KalshiMenuBar
+   git clone https://github.com/neelgun17/PredictBar.git
+   cd PredictBar
    make run
    ```
 3. See all available targets:

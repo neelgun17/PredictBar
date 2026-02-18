@@ -33,7 +33,7 @@ struct DropdownView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("KALSHI DASHBOARD")
+                Text("DASHBOARD")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.secondary)
                 

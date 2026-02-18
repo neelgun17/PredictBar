@@ -86,7 +86,7 @@ class DashboardViewModel: ObservableObject {
                     self?.positions = []
                     self?.portfolioValue = 0.0
                     self?.accountBalance = 0.0
-                    self?.menuBarText = "Kalshi"
+                    self?.menuBarText = "PredictBar"
                     WebSocketManager.shared.disconnect()
                 }
             }
@@ -934,7 +934,7 @@ class DashboardViewModel: ObservableObject {
 
             let body = bodyLines.joined(separator: "\n")
 
-            // Send with Kalshi homepage as fallback URL
+            // Send with fallback URL
             sendNotification(
                 title: title,
                 body: body,

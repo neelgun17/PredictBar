@@ -233,7 +233,7 @@ class NetworkManager {
         
         // Retrieve credentials securely
         guard let credentials = try? CredentialsManager.shared.get() else {
-            print("❌ Missing Kalshi API credentials. Please add them in Settings.")
+            print("❌ Missing API credentials. Please add them in Settings.")
             return nil
         }
         
@@ -555,7 +555,7 @@ class NetworkManager {
         if let maxTs = maxTs { queryItems.append(URLQueryItem(name: "max_ts", value: String(maxTs))) }
         if let cursor = cursor { queryItems.append(URLQueryItem(name: "cursor", value: cursor)) }
         
-        // Note: Kalshi /markets/{ticker}/trades endpoint
+        // Note: Kalshi API /markets/{ticker}/trades endpoint
         var components = URLComponents(string: "/markets/\(ticker)/trades")
         components?.queryItems = queryItems
         

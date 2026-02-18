@@ -4,26 +4,26 @@
 import PackageDescription
 
 let package = Package(
-    name: "KalshiMenuBar",
+    name: "PredictBar",
     platforms: [
         .macOS(.v13)
     ],
     products: [
         .executable(
-            name: "KalshiMenuBar",
-            targets: ["KalshiMenuBar"]
+            name: "PredictBar",
+            targets: ["PredictBar"]
         )
     ],
     targets: [
         .executableTarget(
-            name: "KalshiMenuBar",
+            name: "PredictBar",
             path: ".",
             exclude: [
                 "Resources",
                 "Scripts",
                 ".github",
                 "Info.plist",
-                "KalshiMenuBar.entitlements",
+                "PredictBar.entitlements",
                 "Makefile",
                 "restart.sh",
                 "README.md",

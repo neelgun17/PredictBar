@@ -15,29 +15,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 swift build
 
 # Run debug binary (with console output)
-.build/debug/KalshiMenuBar
+.build/debug/PredictBar
 
 # Full rebuild + app bundle + code signing + launch
 ./restart.sh
 ```
 
-`restart.sh` does: clean build → create .app bundle → codesign with developer cert → `open KalshiMenuBar.app`. Notifications require running as a signed .app bundle.
+`restart.sh` does: clean build → create .app bundle → codesign with developer cert → `open PredictBar.app`. Notifications require running as a signed .app bundle.
 
 ### Production Build
 ```bash
 swift build -c release
-# Binary at .build/release/KalshiMenuBar
+# Binary at .build/release/PredictBar
 ```
 
 ### Xcode Build (compilation verification)
 ```bash
-xcodebuild -scheme KalshiMenuBar -configuration Debug -destination 'platform=macOS' clean build
+xcodebuild -scheme PredictBar -configuration Debug -destination 'platform=macOS' clean build
 ```
 
 ## Architecture Overview
 
 ### Application Type
-This is a **macOS menu bar application** (LSUIElement = true, no dock icon) that displays Kalshi trading positions in the menu bar with a dropdown interface.
+This is a **macOS menu bar application** (LSUIElement = true, no dock icon) that displays prediction market trading positions in the menu bar with a dropdown interface.
 
 ### Core Components
 
@@ -191,7 +191,7 @@ When positions change:
 ### View Logs
 ```bash
 # Run with console output visible
-.build/debug/KalshiMenuBar
+.build/debug/PredictBar
 
 # Or use debug script
 ./debug_run.sh  # outputs to debug_output.txt

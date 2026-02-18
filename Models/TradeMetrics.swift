@@ -50,7 +50,7 @@ struct TradeMetrics {
     let pnlByMonth: [(month: String, pnl: Double)]
     let marketBreakdown: [MarketStats]
 
-    /// Extract league/category from a Kalshi ticker.
+    /// Extract league/category from a ticker.
     /// e.g. "KXNBAGAME-25NOV19NYKDAL-NYK" → "NBA"
     ///      "KXNFLMVP-26-MSTA" → "NFL"
     ///      "KXFIFAGAME-25NOV18BRATUN-TIE" → "FIFA"
@@ -58,7 +58,7 @@ struct TradeMetrics {
     ///      "KXNCAAFGAME-..." → "NCAAF"
     ///      "INX..." or other → ticker prefix
     static func extractCategory(from ticker: String) -> String {
-        // Most Kalshi sports tickers start with "KX" followed by the league
+        // Most sports tickers start with "KX" followed by the league
         let upper = ticker.uppercased()
         guard upper.hasPrefix("KX") else {
             // Non-KX tickers: take everything before the first dash or hyphen
@@ -99,31 +99,41 @@ struct TradeMetrics {
         let sells = fills.filter { $0.action.lowercased() == "sell" }
         let totalFees = fills.reduce(0.0) { $0 + Double($1.totalFeeVal) / 100.0 }
 
-        // Group fills by marketTicker — match buys with sells chronologically (FIFO)
-        let grouped = Dictionary(grouping: fills) { $0.marketTicker }
+        // Group fills by (marketTicker, side) — match buys with sells chronologically (FIFO)
+        // This prevents YES buys from matching with NO sells on the same market
+        let grouped = Dictionary(grouping: fills) { "\($0.marketTicker)|\($0.side.lowercased())" }
 
         var roundTrips: [TradeResult] = []
         var perCategoryResults: [String: [TradeResult]] = [:]
 
-        for (ticker, tickerFills) in grouped {
+        for (key, tickerFills) in grouped {
+            let ticker = String(key.split(separator: "|").first ?? Substring(key))
             let sorted = tickerFills.sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
-            var buyQueue: [(price: Double, count: Int, date: Date?)] = []
+            // Track per-contract fee for proportional allocation to round trips
+            var buyQueue: [(price: Double, feePerContract: Double, count: Int, date: Date?)] = []
 
             for fill in sorted {
                 let pricePerContract = Double(fill.price) / 100.0
+                let fillFee = Double(fill.totalFeeVal) / 100.0
+                let feePerContract = fill.count > 0 ? fillFee / Double(fill.count) : 0.0
                 let action = fill.action.lowercased()
                 if action == "buy" {
-                    buyQueue.append((price: pricePerContract, count: fill.count, date: fill.date))
+                    buyQueue.append((price: pricePerContract, feePerContract: feePerContract, count: fill.count, date: fill.date))
                 } else if action == "sell" {
                     var remaining = fill.count
                     let sellPrice = pricePerContract
+                    // Distribute sell fee proportionally across matched round trips
+                    let sellFeePerContract = feePerContract
 
                     while remaining > 0 && !buyQueue.isEmpty {
                         var buy = buyQueue[0]
                         let matched = min(remaining, buy.count)
 
-                        // Simple P&L: sell price - buy price per contract
-                        let pnl = (sellPrice - buy.price) * Double(matched)
+                        // Net P&L: gross proceeds minus cost minus fees on both sides
+                        let grossPnl = (sellPrice - buy.price) * Double(matched)
+                        let buyFees = buy.feePerContract * Double(matched)
+                        let sellFees = sellFeePerContract * Double(matched)
+                        let pnl = grossPnl - buyFees - sellFees
                         let result = TradeResult(ticker: ticker, pnl: pnl, date: fill.date)
                         roundTrips.append(result)
 
@@ -146,11 +156,12 @@ struct TradeMetrics {
         // Sort round trips by date
         let sortedTrips = roundTrips.sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
 
-        // Win rate
-        let wins = sortedTrips.filter { $0.pnl > 0 }
-        let winRate = sortedTrips.isEmpty ? 0.0 : Double(wins.count) / Double(sortedTrips.count)
+        // Win rate (breakeven trades excluded from win/loss)
+        let nonZeroTrips = sortedTrips.filter { $0.pnl != 0 }
+        let wins = nonZeroTrips.filter { $0.pnl > 0 }
+        let winRate = nonZeroTrips.isEmpty ? 0.0 : Double(wins.count) / Double(nonZeroTrips.count)
 
-        // Total realized P&L
+        // Total realized P&L (fees already deducted in each round trip)
         let totalPnL = sortedTrips.reduce(0.0) { $0 + $1.pnl }
         let avgProfit = sortedTrips.isEmpty ? 0.0 : totalPnL / Double(sortedTrips.count)
 
