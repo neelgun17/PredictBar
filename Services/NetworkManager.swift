@@ -229,7 +229,7 @@ class NetworkManager {
         // endpoint might contain query params, e.g. /portfolio/fills?limit=100
         // URL needs full endpoint. Signature needs path ONLY.
         
-        guard let url = URL(string: "https://api.elections.kalshi.com/trade-api/v2" + endpoint) else { return nil }
+        guard let url = URL(string: baseURL.absoluteString + endpoint) else { return nil }
         
         // Retrieve credentials securely
         guard let credentials = try? CredentialsManager.shared.get() else {
@@ -506,6 +506,35 @@ class NetworkManager {
         }.resume()
     }
     
+    func fetchAllFills(completion: @escaping (Result<[Fill], Error>) -> Void) {
+        var allFills: [Fill] = []
+
+        func fetchPage(cursor: String?) {
+            fetchFills(cursor: cursor, limit: 100) { result in
+                switch result {
+                case .success(let (response, _)):
+                    let pageFills = response.fills ?? []
+                    allFills.append(contentsOf: pageFills)
+
+                    if let nextCursor = response.cursor, !nextCursor.isEmpty, !pageFills.isEmpty {
+                        fetchPage(cursor: nextCursor)
+                    } else {
+                        completion(.success(allFills))
+                    }
+                case .failure(let error):
+                    if allFills.isEmpty {
+                        completion(.failure(error))
+                    } else {
+                        // Return what we have so far
+                        completion(.success(allFills))
+                    }
+                }
+            }
+        }
+
+        fetchPage(cursor: nil)
+    }
+
     struct PublicTrade: Decodable {
         let price: Int
         let count: Int

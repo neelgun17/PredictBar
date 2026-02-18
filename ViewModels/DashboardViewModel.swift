@@ -1,9 +1,10 @@
 import SwiftUI
 import Combine
 import UserNotifications
-
 @MainActor
 class DashboardViewModel: ObservableObject {
+    nonisolated(unsafe) static var shared: DashboardViewModel?
+
     @Published var totalCashOutValue: Double = 0.0
     @Published var overallROI: Double = 0.0
     @Published var overallPnL: Double = 0.0
@@ -12,14 +13,19 @@ class DashboardViewModel: ObservableObject {
     @Published var menuBarText: String = ""
     @Published var positions: [Position] = []
     @Published var isConnected: Bool = false
-    
+    @Published var fills: [Fill] = []
+    @Published var tradeMetrics: TradeMetrics?
+    @Published var isLoadingFills: Bool = false
+
     private var cancellables = Set<AnyCancellable>()
     private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
-    
+
     init() {
         loadAlertStatesFromUserDefaults()
+        loadCachedFills()
         setupBindings()
         fetchData()
+        fetchTradeHistoryIfNeeded()
         WebSocketManager.shared.connect()
     }
 
@@ -295,7 +301,6 @@ class DashboardViewModel: ObservableObject {
         
         updateMenuBarText()
         checkThresholds()
-        updateWidgetData()
     }
     
     func updateMenuBarText() {
@@ -1025,6 +1030,59 @@ class DashboardViewModel: ObservableObject {
         UNUserNotificationCenter.current().add(request)
     }
     
+    // MARK: - Trade History & Metrics
+
+    private func loadCachedFills() {
+        guard let data = UserDefaults.standard.data(forKey: "cachedFills") else { return }
+        do {
+            let decoder = JSONDecoder()
+            let cached = try decoder.decode([Fill].self, from: data)
+            fills = cached
+            tradeMetrics = TradeMetrics.compute(from: cached)
+        } catch {
+            print("⚠️ Failed to decode cached fills: \(error)")
+        }
+    }
+
+    private func cacheFills(_ fills: [Fill]) {
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(fills)
+            UserDefaults.standard.set(data, forKey: "cachedFills")
+            UserDefaults.standard.set(Date(), forKey: "fillsCacheTimestamp")
+        } catch {
+            print("⚠️ Failed to cache fills: \(error)")
+        }
+    }
+
+    private func fetchTradeHistoryIfNeeded() {
+        if let timestamp = UserDefaults.standard.object(forKey: "fillsCacheTimestamp") as? Date,
+           Date().timeIntervalSince(timestamp) < 3600,
+           !fills.isEmpty {
+            return
+        }
+        refreshTradeHistory()
+    }
+
+    func refreshTradeHistory() {
+        guard !isLoadingFills else { return }
+        isLoadingFills = true
+
+        NetworkManager.shared.fetchAllFills { [weak self] result in
+            DispatchQueue.main.async {
+                self?.isLoadingFills = false
+                switch result {
+                case .success(let fetchedFills):
+                    self?.fills = fetchedFills
+                    self?.tradeMetrics = TradeMetrics.compute(from: fetchedFills)
+                    self?.cacheFills(fetchedFills)
+                case .failure(let error):
+                    print("⚠️ Failed to fetch fills: \(error)")
+                }
+            }
+        }
+    }
+
     // Called when a WebSocket ticker update is received
     func updatePrice(with quote: WebSocketManager.TickerQuote) {
         guard let index = positions.firstIndex(where: { $0.marketTicker == quote.ticker }) else { return }
@@ -1062,13 +1120,4 @@ class DashboardViewModel: ObservableObject {
         }
     }
     
-    // MARK: - Widget Data Update
-    
-    /// Updates the widget's shared data store with current portfolio snapshot
-    private func updateWidgetData() {
-        // Take top 5 positions for the widget
-        let topPositions = positions.prefix(5).map { WidgetPosition(from: $0) }
-        let snapshot = WidgetPortfolioSnapshot(positions: Array(topPositions))
-        WidgetDataStore.shared.saveSnapshot(snapshot)
-    }
 }

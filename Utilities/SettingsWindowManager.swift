@@ -24,11 +24,11 @@ final class SettingsWindowManager {
     func open() {
         if window == nil {
             let hostingController = NSHostingController(
-                rootView: SettingsView()
+                rootView: SettingsView(dashboardViewModel: DashboardViewModel.shared)
             )
-            
+
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 450, height: 260),
+                contentRect: NSRect(x: 0, y: 0, width: 550, height: 450),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered,
                 defer: false

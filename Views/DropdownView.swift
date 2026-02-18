@@ -315,9 +315,43 @@ struct DropdownView: View {
                 }
             }
             
+            // Quick Stats Bar
+            if let metrics = viewModel.tradeMetrics, metrics.totalTrades > 0 {
+                Divider()
+                    .opacity(0.5)
+
+                Button(action: { SettingsWindowManager.shared.open() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chart.bar.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Text("\(metrics.totalTrades) trades")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Text("·")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary.opacity(0.5))
+                        Text("\(Int(metrics.winRate * 100))% wins")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Text("·")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary.opacity(0.5))
+                        Text("\(metrics.totalRealizedPnL >= 0 ? "+" : "")\(metrics.totalRealizedPnL.formatted(.currency(code: "USD"))) realized")
+                            .font(.system(size: 11))
+                            .foregroundColor(metrics.totalRealizedPnL >= 0 ? .green : .red)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                }
+                .buttonStyle(.plain)
+                .help("Open Performance stats")
+            }
+
             Divider()
                 .opacity(0.5)
-            
+
             // Account Section
             VStack(alignment: .leading, spacing: 0) {
                 Text("ACCOUNT")

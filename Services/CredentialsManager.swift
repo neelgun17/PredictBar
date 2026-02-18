@@ -6,7 +6,7 @@ import Security
 class CredentialsManager {
     static let shared = CredentialsManager()
     
-    private let service = "com.neel.KalshiMenuBar"
+    private let service = "com.kalshimenubar"
     private let accessKeyAccount = "kalshi-access-key"
     private let secretKeyAccount = "kalshi-access-secret"
     

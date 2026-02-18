@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Platform Requirements
+
+- **macOS 13.0+** (Ventura), **Swift 5.9+** (swift-tools-version: 5.9)
+- SPM for main app build
+
 ## Build & Run Commands
 
 ### Development
@@ -12,29 +17,27 @@ swift build
 # Run debug binary (with console output)
 .build/debug/KalshiMenuBar
 
-# Build and run release version with app bundle
+# Full rebuild + app bundle + code signing + launch
 ./restart.sh
 ```
 
+`restart.sh` does: clean build → create .app bundle → codesign with developer cert → `open KalshiMenuBar.app`. Notifications require running as a signed .app bundle.
+
 ### Production Build
 ```bash
-# Build optimized release binary
 swift build -c release
-
-# Release binary location
-.build/release/KalshiMenuBar
+# Binary at .build/release/KalshiMenuBar
 ```
 
-### Xcode Development
+### Xcode Build (compilation verification)
 ```bash
-# Build with Xcode (required for complete compilation verification)
 xcodebuild -scheme KalshiMenuBar -configuration Debug -destination 'platform=macOS' clean build
 ```
 
 ## Architecture Overview
 
 ### Application Type
-This is a **macOS menu bar application** (LSUIElement = true, no dock icon) that displays Kalshi trading positions in the menu bar with a dropdown interface. It includes a companion WidgetKit extension for macOS widgets.
+This is a **macOS menu bar application** (LSUIElement = true, no dock icon) that displays Kalshi trading positions in the menu bar with a dropdown interface.
 
 ### Core Components
 
@@ -220,13 +223,6 @@ To test alerts without waiting for market moves:
 2. Wait for next 30-second check cycle
 3. Check console for "🔔 Alert queued" messages
 4. Verify macOS notifications appear (check System Settings → Notifications)
-
-## Widget Development
-
-The WidgetKit extension shares Position/Market models via App Group:
-- Data saved to UserDefaults with `suiteName: "group.com.kalshi.menubar"`
-- ViewModel writes `WidgetData` struct every refresh
-- Widget timeline updates every 5 minutes (configurable in WidgetProvider)
 
 ## API Integration Notes
 

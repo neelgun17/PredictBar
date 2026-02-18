@@ -7,7 +7,12 @@ struct KalshiMenuBarApp: App {
     @StateObject private var dashboardViewModel = DashboardViewModel()
     @AppStorage("appearanceMode") private var appearanceMode: String = "System"
     
+    private static func setSharedViewModel(_ vm: DashboardViewModel) {
+        DashboardViewModel.shared = vm
+    }
+
     var body: some Scene {
+        let _ = Self.setSharedViewModel(dashboardViewModel)
         MenuBarExtra {
             DropdownView(viewModel: dashboardViewModel)
                 .applyAppearance(appearanceMode)
@@ -17,7 +22,7 @@ struct KalshiMenuBarApp: App {
         .menuBarExtraStyle(.window)
         
         Settings {
-            SettingsView()
+            SettingsView(dashboardViewModel: dashboardViewModel)
                 .applyAppearance(appearanceMode)
         }
     }
@@ -26,6 +31,13 @@ struct KalshiMenuBarApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Only setup notifications when running as a proper app bundle
+        if let icon = NSImage(systemSymbolName: "chart.pie", accessibilityDescription: "App Icon") {
+            // Tint it to match the app's accent color/theme if possible, or just use default
+            // SF Symbols are template images, so we might need to config them.
+            // Let's try simple first.
+            NSApplication.shared.applicationIconImage = icon
+        }
+
         guard Bundle.main.bundleURL.pathExtension == "app" else { return }
 
         UNUserNotificationCenter.current().delegate = self

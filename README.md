@@ -21,7 +21,6 @@ Add screenshots here:
 - **Position Management** - See all active positions with current price, profit/loss, ROI, and sparkline charts
 - **Smart Alerts** - Get notified when positions hit customizable ROI thresholds, profit targets, or price targets
 - **Per-Position Alerts** - Configure individual alert settings for each position
-- **Dashboard Widget** - macOS widget showing your top positions at a glance
 - **Multiple Display Modes** - Choose what to show in the menu bar: Cash Out Value, ROI %, P&L, Portfolio Value, or Balance
 - **Secure Storage** - API credentials stored in macOS Keychain (never saved to disk)
 - **Native Experience** - Built with SwiftUI, designed to feel like a native macOS app
@@ -34,7 +33,14 @@ Add screenshots here:
 
 ## Installation
 
-### Option 1: Build from Source
+### Option 1: Download from GitHub Releases
+
+1. Go to the [Releases](https://github.com/neelgun17/KalshiMenuBar/releases) page
+2. Download the latest `KalshiMenuBar-vX.X.X.zip`
+3. Unzip and drag `KalshiMenuBar.app` to your Applications folder
+4. Open the app — the Kalshi icon will appear in your menu bar
+
+### Option 2: Build from Source
 
 1. **Clone the repository**:
    ```bash
@@ -44,13 +50,20 @@ Add screenshots here:
 
 2. **Build and run**:
    ```bash
-   swift build
-   .build/debug/KalshiMenuBar
+   make run
    ```
 
-   Or use the helper script:
+   Other useful commands:
    ```bash
-   ./restart.sh
+   make help       # show all available targets
+   make build      # debug build only
+   make debug      # build and run with console output
+   make bundle     # create signed .app without launching
+   ```
+
+   To sign with your own Apple Developer certificate (required for notifications):
+   ```bash
+   CODESIGN_IDENTITY="Apple Development" make run
    ```
 
 3. The Kalshi icon will appear in your menu bar.
@@ -111,12 +124,6 @@ Click the menu bar icon to see:
    - Profit target (dollar amount)
    - Price target (sell when price reaches X)
 
-### Dashboard Widget
-1. Right-click on your desktop > **Edit Widgets**
-2. Search for "Kalshi"
-3. Add the widget (available in small, medium, or large sizes)
-4. Shows your top 5 positions with ROI sparklines
-
 ## Troubleshooting
 
 | Problem | Solution |
@@ -124,12 +131,11 @@ Click the menu bar icon to see:
 | "Failed to decode Private Key" | Make sure you copied the entire key including `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----` |
 | Positions not loading | Check your internet connection. Try clicking Refresh in the dropdown. |
 | App not appearing in menu bar | The app runs as a menu bar app only (no dock icon). Look for the icon in your menu bar. |
-| Widget not updating | Widgets refresh on a schedule. Force refresh by opening the main app. |
 
 ### View Logs
 To see detailed logs for debugging:
 ```bash
-.build/debug/KalshiMenuBar
+make debug
 ```
 
 ## Privacy & Security

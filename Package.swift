@@ -18,6 +18,20 @@ let package = Package(
         .executableTarget(
             name: "KalshiMenuBar",
             path: ".",
+            exclude: [
+                "Resources",
+                "Scripts",
+                ".github",
+                "Info.plist",
+                "KalshiMenuBar.entitlements",
+                "Makefile",
+                "restart.sh",
+                "README.md",
+                "CONTRIBUTING.md",
+                "SECURITY.md",
+                "CLAUDE.md",
+                "LICENSE"
+            ],
             sources: [
                 "App",
                 "Models",
