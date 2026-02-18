@@ -898,8 +898,9 @@ class DashboardViewModel: ObservableObject {
             withTimeInterval: alertGroupingWindow,
             repeats: false
         ) { [weak self] _ in
+            guard let self else { return }
             Task { @MainActor in
-                self?.sendGroupedNotifications()
+                self.sendGroupedNotifications()
             }
         }
     }
