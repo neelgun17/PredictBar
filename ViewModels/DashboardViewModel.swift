@@ -5,6 +5,17 @@ import UserNotifications
 class DashboardViewModel: ObservableObject {
     nonisolated(unsafe) static var shared: DashboardViewModel?
 
+    /// Builds a kalshi.com URL by appending path components through `URLComponents`,
+    /// which percent-encodes each segment. Prevents API-controlled tickers/slugs
+    /// from injecting `?`, `#`, or `/..` into the final URL.
+    nonisolated static func kalshiMarketURL(path components: [String]) -> URL? {
+        var url = URLComponents()
+        url.scheme = "https"
+        url.host = "kalshi.com"
+        url.path = "/" + components.joined(separator: "/")
+        return url.url
+    }
+
     @Published var totalCashOutValue: Double = 0.0
     @Published var overallROI: Double = 0.0
     @Published var overallPnL: Double = 0.0
@@ -202,7 +213,7 @@ class DashboardViewModel: ObservableObject {
                                         // Set fallback URL immediately using series ticker (if available)
                                         if let seriesTicker = market.seriesTicker {
                                             updatedPosition?.seriesTicker = seriesTicker
-                                            if let url = URL(string: "https://kalshi.com/markets/\(seriesTicker.lowercased())") {
+                                            if let url = Self.kalshiMarketURL(path: ["markets", seriesTicker.lowercased()]) {
                                                 updatedPosition?.marketUrl = url
                                             }
                                         }
@@ -250,9 +261,12 @@ class DashboardViewModel: ObservableObject {
                                                                             .components(separatedBy: CharacterSet.alphanumerics.inverted.subtracting(.init(charactersIn: "-")))
                                                                             .joined()
                                                                         
-                                                                        let urlString = "https://kalshi.com/markets/\(series.ticker.lowercased())/\(slug)/\(event.eventTicker.lowercased())"
-                                                                        
-                                                                        if let url = URL(string: urlString) {
+                                                                        if let url = Self.kalshiMarketURL(path: [
+                                                                            "markets",
+                                                                            series.ticker.lowercased(),
+                                                                            slug,
+                                                                            event.eventTicker.lowercased()
+                                                                        ]) {
                                                                             // Update position safely
                                                                             if let idx = self?.positions.firstIndex(where: { $0.ticker == position.ticker }) {
                                                                                 self?.positions[idx].marketUrl = url

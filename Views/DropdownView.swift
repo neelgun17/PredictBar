@@ -1,5 +1,19 @@
 import SwiftUI
 
+/// Opens a URL only if it points at kalshi.com over HTTPS. Market metadata
+/// (tickers, titles, slugs) comes from the API; this guards against the API
+/// being able to redirect the user's browser to an arbitrary host.
+@discardableResult
+fileprivate func safeOpenKalshi(_ url: URL?) -> Bool {
+    guard let url = url,
+          url.scheme == "https",
+          let host = url.host?.lowercased(),
+          host == "kalshi.com" || host.hasSuffix(".kalshi.com")
+    else { return false }
+    NSWorkspace.shared.open(url)
+    return true
+}
+
 struct DropdownView: View {
     @ObservedObject var viewModel: DashboardViewModel
     @ObservedObject var settingsViewModel = SettingsViewModel.shared
@@ -61,9 +75,7 @@ struct DropdownView: View {
             .padding(.vertical, 8)
             .background(.ultraThinMaterial)
             .onTapGesture {
-                if let url = URL(string: "https://kalshi.com") {
-                    NSWorkspace.shared.open(url)
-                }
+                safeOpenKalshi(URL(string: "https://kalshi.com"))
             }
             
             Divider()
@@ -136,9 +148,7 @@ struct DropdownView: View {
                                                 }
                                             }
                                             .onTapGesture {
-                                                if let url = position.marketUrl {
-                                                    NSWorkspace.shared.open(url)
-                                                }
+                                                safeOpenKalshi(position.marketUrl)
                                             }
                                             .animation(.easeInOut(duration: 0.15), value: hoveredTicker == position.ticker)
 
@@ -187,7 +197,7 @@ struct DropdownView: View {
                                                     
                                                     if let sellURL = sellUrl(for: position) {
                                                         Button(action: {
-                                                            NSWorkspace.shared.open(sellURL)
+                                                            safeOpenKalshi(sellURL)
                                                         }) {
                                                             Text("Sell \(position.currentPrice, format: .currency(code: "USD"))")
                                                                 .font(.system(size: 10, weight: .bold))
@@ -243,7 +253,7 @@ struct DropdownView: View {
                                                     if let arb = position.lastArbitrageOpportunity,
                                                        let hedgeURL = hedgeUrl(for: position, opportunity: arb) {
                                                         Button(action: {
-                                                            NSWorkspace.shared.open(hedgeURL)
+                                                            safeOpenKalshi(hedgeURL)
                                                         }) {
                                                             HStack(spacing: 2) {
                                                                 Image(systemName: "scalemass.fill")
@@ -291,12 +301,11 @@ struct DropdownView: View {
                                     .padding(.vertical, 8)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
-                                        if let url = position.marketUrl {
-                                            NSWorkspace.shared.open(url)
-                                        } else if let eventTicker = position.eventTicker {
-                                            if let url = URL(string: "https://kalshi.com/markets/\(eventTicker)") {
-                                                NSWorkspace.shared.open(url)
-                                            }
+                                        if !safeOpenKalshi(position.marketUrl),
+                                           let eventTicker = position.eventTicker,
+                                           let encoded = eventTicker.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+                                           let url = URL(string: "https://kalshi.com/markets/\(encoded)") {
+                                            safeOpenKalshi(url)
                                         }
                                     }
                                     .contextMenu {

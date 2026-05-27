@@ -2,49 +2,70 @@ import Foundation
 import Security
 
 struct CryptoUtils {
-    static func sign(message: String, privateKeyPEM: String) -> String? {
-        guard let data = message.data(using: .utf8) else { return nil }
-        
-        // 1. Clean PEM string
-        // Robust cleaning: Remove headers/footers and any non-base64 characters
-        let cleanPEM = privateKeyPEM
+    /// Minimum acceptable RSA key size. Anything smaller is rejected at import.
+    static let minimumKeyBits = 2048
+
+    /// Imports a PEM-encoded RSA private key into an opaque `SecKey`.
+    /// The Security framework manages the key material in wired memory once imported,
+    /// so the PEM `String` can be discarded immediately by the caller.
+    static func importPrivateKey(pem: String) -> SecKey? {
+        // Strip header/footer lines, then any whitespace
+        let cleanPEM = pem
             .components(separatedBy: .newlines)
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("-----") }
             .joined()
             .replacingOccurrences(of: " ", with: "")
             .replacingOccurrences(of: "\t", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        
+
         guard let keyData = Data(base64Encoded: cleanPEM) else {
             print("❌ Failed to decode Private Key PEM. Please check format.")
             return nil
         }
-        
-        // 2. Create SecKey
+
         let attributes: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
             kSecAttrKeyClass as String: kSecAttrKeyClassPrivate
         ]
-        
+
         var error: Unmanaged<CFError>?
-        guard let privateKey = SecKeyCreateWithData(keyData as CFData, attributes as CFDictionary, &error) else {
-            print("❌ Failed to create SecKey from data: \(error?.takeRetainedValue().localizedDescription ?? "Unknown error")")
+        guard let key = SecKeyCreateWithData(keyData as CFData, attributes as CFDictionary, &error) else {
+            print("❌ Failed to import Private Key: \(error?.takeRetainedValue().localizedDescription ?? "Unknown error")")
             return nil
         }
-        
-        // 3. Sign with RSA-PSS-SHA256
-        let algorithm: SecKeyAlgorithm = .rsaSignatureMessagePSSSHA256
-        
-        guard SecKeyIsAlgorithmSupported(privateKey, .sign, algorithm) else {
+
+        // Reject keys below the minimum size
+        if let attrs = SecKeyCopyAttributes(key) as? [String: Any],
+           let bits = attrs[kSecAttrKeySizeInBits as String] as? Int {
+            guard bits >= minimumKeyBits else {
+                print("❌ RSA key is \(bits) bits; minimum required is \(minimumKeyBits).")
+                return nil
+            }
+        }
+
+        guard SecKeyIsAlgorithmSupported(key, .sign, .rsaSignatureMessagePSSSHA256) else {
             print("❌ Private Key does not support RSA-PSS-SHA256 algorithm.")
             return nil
         }
-        
-        guard let signatureData = SecKeyCreateSignature(privateKey, algorithm, data as CFData, &error) else {
+
+        return key
+    }
+
+    /// Signs a message with the given `SecKey` using RSA-PSS-SHA256.
+    static func sign(message: String, key: SecKey) -> String? {
+        guard let data = message.data(using: .utf8) else { return nil }
+
+        var error: Unmanaged<CFError>?
+        guard let signatureData = SecKeyCreateSignature(
+            key,
+            .rsaSignatureMessagePSSSHA256,
+            data as CFData,
+            &error
+        ) else {
             print("❌ Failed to create signature: \(error?.takeRetainedValue().localizedDescription ?? "Unknown error")")
             return nil
         }
-        
+
         return (signatureData as Data).base64EncodedString()
     }
 }

@@ -3,6 +3,10 @@ BUNDLE := $(APP_NAME).app
 BUILD_DIR := .build
 CODESIGN_IDENTITY ?= -
 VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo "dev")
+# Strip a leading "v" from tag names like v1.2.3 for CFBundleShortVersionString
+SHORT_VERSION := $(patsubst v%,%,$(VERSION))
+# Monotonically increasing build number for CFBundleVersion (commit count)
+BUILD_NUMBER := $(shell git rev-list --count HEAD 2>/dev/null || echo "1")
 
 # --- Build targets ---
 
@@ -29,8 +33,11 @@ bundle: release ## Build release + create signed .app bundle
 	@sed -i '' 's/$$(EXECUTABLE_NAME)/$(APP_NAME)/g' $(BUNDLE)/Contents/Info.plist
 	@sed -i '' 's/$$(PRODUCT_NAME)/$(APP_NAME)/g' $(BUNDLE)/Contents/Info.plist
 	@sed -i '' 's/$$(PRODUCT_BUNDLE_PACKAGE_TYPE)/APPL/g' $(BUNDLE)/Contents/Info.plist
+	@/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(SHORT_VERSION)" $(BUNDLE)/Contents/Info.plist
+	@/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(BUILD_NUMBER)" $(BUNDLE)/Contents/Info.plist
 	@echo "✍️  Signing with identity: $(CODESIGN_IDENTITY)"
 	@codesign --force --sign "$(CODESIGN_IDENTITY)" \
+		--options runtime \
 		--entitlements $(APP_NAME).entitlements \
 		$(BUNDLE)
 	@echo "✅ $(BUNDLE) ready"

@@ -15,7 +15,7 @@ struct APISettingsView: View {
                 HStack {
                     Text("API Key")
                         .frame(width: 80, alignment: .leading)
-                    TextField("Enter API Key", text: $apiKey)
+                    SecureField("Enter API Key", text: $apiKey)
                         .textFieldStyle(.roundedBorder)
                 }
                 

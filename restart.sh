@@ -36,6 +36,7 @@ sed -i '' 's/$(PRODUCT_BUNDLE_PACKAGE_TYPE)/APPL/g' PredictBar.app/Contents/Info
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
 echo "✍️  Signing app with identity: $CODESIGN_IDENTITY"
 codesign --force --sign "$CODESIGN_IDENTITY" \
+    --options runtime \
     --entitlements PredictBar.entitlements \
     PredictBar.app
 

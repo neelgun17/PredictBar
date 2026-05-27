@@ -23,8 +23,7 @@ class WebSocketManager: ObservableObject {
             return
         }
         
-        let session = URLSession(configuration: .default)
-        webSocketTask = session.webSocketTask(with: request)
+        webSocketTask = PinnedURLSession.shared.webSocketSession.webSocketTask(with: request)
         webSocketTask?.resume()
         
         isConnected = true
@@ -67,7 +66,7 @@ class WebSocketManager: ObservableObject {
         var request = URLRequest(url: url)
         
         // Retrieve credentials securely
-        guard let credentials = try? CredentialsManager.shared.get() else {
+        guard let credentials = try? CredentialsManager.shared.getCredentials() else {
             print("❌ WebSocket connection failed: Missing API credentials.")
             return nil
         }
@@ -78,7 +77,7 @@ class WebSocketManager: ObservableObject {
         
         let messageToSign = timestamp + method + path
         
-        guard let signature = CryptoUtils.sign(message: messageToSign, privateKeyPEM: credentials.privateKey) else {
+        guard let signature = CryptoUtils.sign(message: messageToSign, key: credentials.signingKey) else {
             return nil
         }
         

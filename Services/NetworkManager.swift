@@ -13,7 +13,7 @@ class NetworkManager {
             return
         }
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        PinnedURLSession.shared.session.dataTask(with: request) { data, response, error in
             if let error = error {
                 completion(.failure(error))
                 return
@@ -51,7 +51,7 @@ class NetworkManager {
             return
         }
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        PinnedURLSession.shared.session.dataTask(with: request) { data, response, error in
             if let error = error {
                 completion(.failure(error))
                 return
@@ -111,7 +111,7 @@ class NetworkManager {
             return
         }
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        PinnedURLSession.shared.session.dataTask(with: request) { data, response, error in
             if let error = error {
                 completion(.failure(error))
                 return
@@ -155,7 +155,7 @@ class NetworkManager {
             return
         }
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        PinnedURLSession.shared.session.dataTask(with: request) { data, response, error in
             if let error = error {
                 completion(.failure(error))
                 return
@@ -197,7 +197,7 @@ class NetworkManager {
             return
         }
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        PinnedURLSession.shared.session.dataTask(with: request) { data, response, error in
             if let error = error {
                 completion(.failure(error))
                 return
@@ -232,7 +232,7 @@ class NetworkManager {
         guard let url = URL(string: baseURL.absoluteString + endpoint) else { return nil }
         
         // Retrieve credentials securely
-        guard let credentials = try? CredentialsManager.shared.get() else {
+        guard let credentials = try? CredentialsManager.shared.getCredentials() else {
             print("❌ Missing API credentials. Please add them in Settings.")
             return nil
         }
@@ -258,7 +258,7 @@ class NetworkManager {
         
         let messageToSign = timestamp + method + pathOnly
         
-        guard let signature = CryptoUtils.sign(message: messageToSign, privateKeyPEM: credentials.privateKey) else {
+        guard let signature = CryptoUtils.sign(message: messageToSign, key: credentials.signingKey) else {
             return nil
         }
         
@@ -305,7 +305,7 @@ class NetworkManager {
             return
         }
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        PinnedURLSession.shared.session.dataTask(with: request) { data, response, error in
             if let error = error { completion(.failure(error)); return }
             guard let data = data else { completion(.failure(URLError(.badServerResponse))); return }
             
@@ -400,7 +400,7 @@ class NetworkManager {
         }
         
         func runRequest(_ request: URLRequest, label: String, onResult: @escaping (Result<[Double], Error>) -> Void) {
-            URLSession.shared.dataTask(with: request) { data, response, error in
+            PinnedURLSession.shared.session.dataTask(with: request) { data, response, error in
                 guard let http = response as? HTTPURLResponse else {
                     logResponse(label, data, response, error)
                     onResult(.failure(URLError(.badServerResponse)))
@@ -475,31 +475,28 @@ class NetworkManager {
         let cursor: String?
     }
     
-    func fetchFills(cursor: String? = nil, limit: Int = 100, completion: @escaping (Result<(FillsResponse, String), Error>) -> Void) {
+    func fetchFills(cursor: String? = nil, limit: Int = 100, completion: @escaping (Result<FillsResponse, Error>) -> Void) {
         var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
         if let cursor = cursor {
             queryItems.append(URLQueryItem(name: "cursor", value: cursor))
         }
-        
+
         var components = URLComponents(string: "/portfolio/fills")
         components?.queryItems = queryItems
-        
+
         guard let endpoint = components?.string,
               let request = authenticatedRequest(to: endpoint) else {
             completion(.failure(URLError(.badURL)))
             return
         }
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
+
+        PinnedURLSession.shared.session.dataTask(with: request) { data, response, error in
             if let error = error { completion(.failure(error)); return }
             guard let data = data else { completion(.failure(URLError(.badServerResponse))); return }
-            
-            let jsonStr = String(data: data, encoding: .utf8) ?? "Invalid encoding"
-            
+
             do {
-                let decoder = JSONDecoder()
-                let response = try decoder.decode(FillsResponse.self, from: data)
-                completion(.success((response, jsonStr)))
+                let response = try JSONDecoder().decode(FillsResponse.self, from: data)
+                completion(.success(response))
             } catch {
                 completion(.failure(error))
             }
@@ -512,7 +509,7 @@ class NetworkManager {
         func fetchPage(cursor: String?) {
             fetchFills(cursor: cursor, limit: 100) { result in
                 switch result {
-                case .success(let (response, _)):
+                case .success(let response):
                     let pageFills = response.fills ?? []
                     allFills.append(contentsOf: pageFills)
 
@@ -565,7 +562,7 @@ class NetworkManager {
             return
         }
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        PinnedURLSession.shared.session.dataTask(with: request) { data, response, error in
             if let error = error { completion(.failure(error)); return }
             guard let data = data else { completion(.failure(URLError(.badServerResponse))); return }
             

@@ -28,8 +28,8 @@ Add screenshots here:
 ## Requirements
 
 - **macOS 13.0** (Ventura) or later
-- **Xcode 15+** and Swift 5.9+ (for building from source)
 - A [Kalshi](https://kalshi.com) account with API access
+- For building from source: **Xcode Command Line Tools** (`xcode-select --install`) and Swift 5.9+. Full Xcode is only needed if you want to open the project in the IDE.
 
 ## Installation
 
@@ -37,8 +37,20 @@ Add screenshots here:
 
 1. Go to the [Releases](https://github.com/neelgun17/PredictBar/releases) page
 2. Download the latest `PredictBar-vX.X.X.zip`
-3. Unzip and drag `PredictBar.app` to your Applications folder
-4. Open the app — the icon will appear in your menu bar
+3. Unzip and drag `PredictBar.app` into your `/Applications` folder
+4. **Remove the macOS quarantine flag** (required — see below), then open the app. The icon will appear in your menu bar.
+
+#### Why the extra step on first launch
+
+Release builds are ad-hoc signed (not notarized with a paid Apple Developer ID), so when you download the zip from a browser, macOS attaches a quarantine attribute. On macOS Sonoma and Sequoia, Gatekeeper will refuse to launch the app and may report **"PredictBar is damaged and can't be opened. Move it to the Trash."** This is not actually corruption — it's Gatekeeper blocking the unsigned app.
+
+Run this once after dragging the app to `/Applications`:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/PredictBar.app
+```
+
+You'll need to repeat this command after each update. If you'd rather avoid it entirely — or you need reliable notifications (which may not fire under an ad-hoc signature) — build from source and sign with your own Apple Developer certificate (see below).
 
 ### Option 2: Build from Source
 
@@ -128,6 +140,7 @@ Click the menu bar icon to see:
 
 | Problem | Solution |
 |---------|----------|
+| "PredictBar is damaged and can't be opened" / "unidentified developer" | macOS quarantined the downloaded app. Run `xattr -dr com.apple.quarantine /Applications/PredictBar.app` and try again. |
 | "Failed to decode Private Key" | Make sure you copied the entire key including `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----` |
 | Positions not loading | Check your internet connection. Try clicking Refresh in the dropdown. |
 | App not appearing in menu bar | The app runs as a menu bar app only (no dock icon). Look for the icon in your menu bar. |
