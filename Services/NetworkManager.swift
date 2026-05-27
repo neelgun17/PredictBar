@@ -137,19 +137,41 @@ class NetworkManager {
         let noAsk: Int?
         let status: String?
         let seriesTicker: String?
-        
+
         enum CodingKeys: String, CodingKey {
             case ticker
             case eventTicker = "event_ticker"
             case title
-            case subtitle
-            case lastPrice = "last_price"
-            case yesBid = "yes_bid"
-            case noBid = "no_bid"
-            case yesAsk = "yes_ask"
-            case noAsk = "no_ask"
+            case yesSubTitle = "yes_sub_title"
+            case noSubTitle = "no_sub_title"
+            case lastPriceDollars = "last_price_dollars"
+            case yesBidDollars = "yes_bid_dollars"
+            case noBidDollars = "no_bid_dollars"
+            case yesAskDollars = "yes_ask_dollars"
+            case noAskDollars = "no_ask_dollars"
             case status
             case seriesTicker = "series_ticker"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            ticker = try c.decode(String.self, forKey: .ticker)
+            eventTicker = try c.decode(String.self, forKey: .eventTicker)
+            title = try c.decode(String.self, forKey: .title)
+            subtitle = try c.decodeIfPresent(String.self, forKey: .yesSubTitle)
+                ?? c.decodeIfPresent(String.self, forKey: .noSubTitle)
+            status = try c.decodeIfPresent(String.self, forKey: .status)
+            seriesTicker = try c.decodeIfPresent(String.self, forKey: .seriesTicker)
+            lastPrice = Self.cents(c, .lastPriceDollars)
+            yesBid = Self.cents(c, .yesBidDollars)
+            noBid = Self.cents(c, .noBidDollars)
+            yesAsk = Self.cents(c, .yesAskDollars)
+            noAsk = Self.cents(c, .noAskDollars)
+        }
+
+        private static func cents(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> Int? {
+            guard let s = try? c.decodeIfPresent(String.self, forKey: key), let d = Double(s) else { return nil }
+            return Int((d * 100).rounded())
         }
     }
 
@@ -171,7 +193,6 @@ class NetworkManager {
             }
             
             do {
-                try? data.write(to: URL(fileURLWithPath: "/tmp/predictbar-last-market-raw.json"))
                 let response = try JSONDecoder().decode(MarketResponse.self, from: data)
                 completion(.success(response.market))
             } catch {
