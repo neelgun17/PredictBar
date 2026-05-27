@@ -10,7 +10,7 @@ BUILD_NUMBER := $(shell git rev-list --count HEAD 2>/dev/null || echo "1")
 
 # --- Build targets ---
 
-.PHONY: build release run debug clean bundle sign help
+.PHONY: build release run debug clean bundle sign zip dmg help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -58,3 +58,13 @@ zip: bundle ## Create a distributable .zip of the .app bundle
 	@rm -f $(APP_NAME)-$(VERSION).zip
 	ditto -c -k --keepParent $(BUNDLE) $(APP_NAME)-$(VERSION).zip
 	@echo "📦 Created $(APP_NAME)-$(VERSION).zip"
+
+dmg: bundle ## Create a distributable .dmg of the .app bundle
+	@rm -f $(APP_NAME)-$(VERSION).dmg
+	@rm -rf .dmg-staging
+	@mkdir -p .dmg-staging
+	@cp -R $(BUNDLE) .dmg-staging/
+	@ln -s /Applications .dmg-staging/Applications
+	hdiutil create -volname "$(APP_NAME)" -srcfolder .dmg-staging -ov -format UDZO $(APP_NAME)-$(VERSION).dmg
+	@rm -rf .dmg-staging
+	@echo "📦 Created $(APP_NAME)-$(VERSION).dmg"

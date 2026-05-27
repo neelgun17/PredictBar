@@ -15,7 +15,9 @@ jobs:
           fetch-depth: 0
 
       - name: Build and bundle
-        run: make zip VERSION=${{ github.ref_name }}
+        run: |
+          make dmg VERSION=${{ github.ref_name }}
+          make zip VERSION=${{ github.ref_name }}
 
       - name: Create GitHub Release
         # Pinned to a specific commit SHA to prevent supply-chain attacks via tag movement.
@@ -23,5 +25,7 @@ jobs:
         # v3.0.0 requires Node 24 runtime, which GitHub-hosted macos-14 runners support.
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
         with:
-          files: PredictBar-${{ github.ref_name }}.zip
+          files: |
+            PredictBar-${{ github.ref_name }}.dmg
+            PredictBar-${{ github.ref_name }}.zip
           generate_release_notes: true

@@ -35,19 +35,16 @@ Add screenshots here:
 
 ### Option 1: Download from GitHub Releases (Recommended for most users)
 
-1. Go to the [Releases](https://github.com/neelgun17/PredictBar/releases) page and download the latest `PredictBar-vX.X.X.zip`.
-2. Unzip and drag `PredictBar.app` into your `/Applications` folder.
-3. **Remove the macOS quarantine flag** (required on every install/update):
-   ```bash
-   xattr -dr com.apple.quarantine /Applications/PredictBar.app
-   ```
-4. Open the app. The icon will appear in your menu bar.
+1. Go to the [Releases](https://github.com/neelgun17/PredictBar/releases) page and download the latest `PredictBar-vX.X.X.dmg`.
+2. Double-click the DMG, then drag `PredictBar.app` into the `Applications` shortcut inside the window.
+3. Open `/Applications/PredictBar.app`. The first launch will show **"PredictBar can't be opened because it is from an unidentified developer"** — close that dialog, **right-click the app → Open → Open**. macOS only requires this once per install.
+4. The icon will appear in your menu bar.
 
-#### Why step 3 is necessary
+#### Why the right-click step is necessary
 
-Release builds are ad-hoc signed (not notarized with a paid Apple Developer ID), so macOS attaches a quarantine attribute to anything downloaded via browser. Without removing it, Gatekeeper will refuse to launch the app — often with **"PredictBar is damaged and can't be opened. Move it to the Trash."** This is not actually corruption.
+Release builds are ad-hoc signed (not notarized with a paid Apple Developer ID), so Gatekeeper blocks the first launch. Right-clicking → Open whitelists the app permanently on your machine. Notifications may also be less reliable under ad-hoc signing — if you need them rock-solid, build from source and sign with your own Apple Developer certificate (see Option 2).
 
-If you'd rather avoid this step on every update — or you need reliable notifications (which may not fire under an ad-hoc signature) — build from source and sign with your own Apple Developer certificate (see Option 2).
+> A `PredictBar-vX.X.X.zip` is also published if you prefer that format. Zip downloads pick up a stricter quarantine flag that can produce a misleading "damaged" error; if you hit it, run `xattr -dr com.apple.quarantine /Applications/PredictBar.app` once. The DMG path avoids this.
 
 ### Option 2: Build from Source
 
@@ -137,7 +134,8 @@ Click the menu bar icon to see:
 
 | Problem | Solution |
 |---------|----------|
-| "PredictBar is damaged and can't be opened" / "unidentified developer" | macOS quarantined the downloaded app. Run `xattr -dr com.apple.quarantine /Applications/PredictBar.app` and try again. |
+| "unidentified developer" on first launch | Expected for ad-hoc signed builds. Right-click the app → **Open** → **Open**. Required only once per install. |
+| "PredictBar is damaged and can't be opened" | This appears with zip downloads (not DMG). Run `xattr -dr com.apple.quarantine /Applications/PredictBar.app` once, or re-download the DMG. |
 | "Failed to decode Private Key" | Make sure you copied the entire key including `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----` |
 | Positions not loading | Check your internet connection. Try clicking Refresh in the dropdown. |
 | App not appearing in menu bar | The app runs as a menu bar app only (no dock icon). Look for the icon in your menu bar. |
