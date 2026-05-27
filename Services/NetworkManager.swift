@@ -171,6 +171,7 @@ class NetworkManager {
             }
             
             do {
+                try? data.write(to: URL(fileURLWithPath: "/tmp/predictbar-last-market-raw.json"))
                 let response = try JSONDecoder().decode(MarketResponse.self, from: data)
                 completion(.success(response.market))
             } catch {
