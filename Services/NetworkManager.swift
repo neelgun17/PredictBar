@@ -74,13 +74,13 @@ class NetworkManager {
                 let decodedResponse = try decoder.decode(PortfolioResponse.self, from: data)
                 completion(.success(decodedResponse.marketPositions ?? []))
             } catch {
-                let bodyPreview = String(data: data.prefix(4000), encoding: .utf8) ?? "<non-utf8>"
-                NSLog("[PredictBar] fetchPortfolio decode failed: \(error). Body preview: \(bodyPreview)")
+                try? data.write(to: URL(fileURLWithPath: "/tmp/predictbar-last-portfolio.json"))
+                NSLog("[PredictBar] fetchPortfolio decode failed: \(error). Full body written to /tmp/predictbar-last-portfolio.json")
                 completion(.failure(error))
             }
         }.resume()
     }
-    
+
     struct BalanceResponse: Decodable {
         let balance: Int
         let portfolioValue: Int
