@@ -19,6 +19,55 @@ struct Position: Identifiable, Codable {
     let realizedPnl: Int?
     let totalTraded: Int?
     let marketExposure: Int?
+
+    // Memberwise init — used by tests and any code that constructs a Position by hand.
+    init(
+        ticker: String,
+        position: Int,
+        feesPaid: Int? = nil,
+        realizedPnl: Int? = nil,
+        totalTraded: Int? = nil,
+        marketExposure: Int? = nil
+    ) {
+        self.ticker = ticker
+        self.position = position
+        self.feesPaid = feesPaid
+        self.realizedPnl = realizedPnl
+        self.totalTraded = totalTraded
+        self.marketExposure = marketExposure
+    }
+
+    // Kalshi's /portfolio/positions response. Around early 2026 they migrated from
+    // integer cents + signed integer position to decimal-string dollars + fractional
+    // shares. We decode the new shape and normalize back to the cents/contracts
+    // representation the rest of the app already expects.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ticker = try c.decode(String.self, forKey: .ticker)
+
+        let positionString = try c.decode(String.self, forKey: .positionFp)
+        let positionDouble = Double(positionString) ?? 0
+        position = Int(positionDouble.rounded())
+
+        feesPaid = Self.decodeDollars(c, key: .feesPaidDollars)
+        realizedPnl = Self.decodeDollars(c, key: .realizedPnlDollars)
+        totalTraded = Self.decodeDollars(c, key: .totalTradedDollars)
+        marketExposure = Self.decodeDollars(c, key: .marketExposureDollars)
+    }
+
+    private static func decodeDollars(_ c: KeyedDecodingContainer<CodingKeys>, key: CodingKeys) -> Int? {
+        guard let s = try? c.decodeIfPresent(String.self, forKey: key), let d = Double(s) else { return nil }
+        return Int((d * 100).rounded())
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ticker
+        case positionFp = "position_fp"
+        case feesPaidDollars = "fees_paid_dollars"
+        case realizedPnlDollars = "realized_pnl_dollars"
+        case totalTradedDollars = "total_traded_dollars"
+        case marketExposureDollars = "market_exposure_dollars"
+    }
     
     // Enriched data from Market API
     var title: String?
