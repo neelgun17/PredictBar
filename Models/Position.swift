@@ -238,10 +238,10 @@ struct Position: Identifiable, Decodable {
 
     enum CodingKeys: String, CodingKey {
         case ticker
-        case positionFp = "position_fp"
-        case feesPaidDollars = "fees_paid_dollars"
-        case realizedPnlDollars = "realized_pnl_dollars"
-        case totalTradedDollars = "total_traded_dollars"
-        case marketExposureDollars = "market_exposure_dollars"
+        case positionFp
+        case feesPaidDollars
+        case realizedPnlDollars
+        case totalTradedDollars
+        case marketExposureDollars
     }
 }
