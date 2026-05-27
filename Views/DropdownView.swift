@@ -82,7 +82,47 @@ struct DropdownView: View {
                 .opacity(0.5)
             
             // Positions Section
-            if viewModel.positions.isEmpty {
+            if !settingsViewModel.hasCredentials {
+                VStack(spacing: 10) {
+                    Image(systemName: "key.horizontal")
+                        .font(.system(size: 24))
+                        .foregroundColor(.secondary.opacity(0.6))
+                    Text("Connect your Kalshi account")
+                        .font(.system(size: 13, weight: .medium))
+                    Text("Add your Kalshi API key to start tracking positions.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                    Button("Open Settings", action: openSettings)
+                        .controlSize(.small)
+                        .padding(.top, 2)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 20)
+            } else if let errorMessage = viewModel.lastFetchError {
+                VStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.orange)
+                    Text("Couldn't load portfolio")
+                        .font(.system(size: 13, weight: .medium))
+                    Text(errorMessage)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                    HStack(spacing: 8) {
+                        Button("Retry") { viewModel.fetchData() }
+                            .controlSize(.small)
+                        Button("Settings", action: openSettings)
+                            .controlSize(.small)
+                    }
+                    .padding(.top, 2)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 20)
+            } else if viewModel.positions.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "chart.pie")
                         .font(.system(size: 24))

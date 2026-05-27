@@ -27,6 +27,7 @@ class DashboardViewModel: ObservableObject {
     @Published var fills: [Fill] = []
     @Published var tradeMetrics: TradeMetrics?
     @Published var isLoadingFills: Bool = false
+    @Published var lastFetchError: String?
 
     private var cancellables = Set<AnyCancellable>()
     private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
@@ -98,6 +99,7 @@ class DashboardViewModel: ObservableObject {
                     self?.portfolioValue = 0.0
                     self?.accountBalance = 0.0
                     self?.menuBarText = "PredictBar"
+                    self?.lastFetchError = nil
                     WebSocketManager.shared.disconnect()
                 }
             }
@@ -105,21 +107,28 @@ class DashboardViewModel: ObservableObject {
     }
     
     func fetchData() {
+        // Skip fetches when credentials are missing; the UI shows a connect CTA instead.
+        guard SettingsViewModel.shared.hasCredentials else { return }
+
         // Fetch Balance
         NetworkManager.shared.fetchBalance { [weak self] result in
             DispatchQueue.main.async {
-                if case .success(let response) = result {
+                switch result {
+                case .success(let response):
                     self?.accountBalance = Double(response.balance) / 100.0
                     self?.updateMenuBarText()
                     self?.portfolioValue = Double(response.portfolioValue) / 100.0
+                case .failure(let error):
+                    self?.lastFetchError = Self.userFacingMessage(for: error)
                 }
             }
         }
-        
+
         NetworkManager.shared.fetchPortfolio { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let positions):
+                    self?.lastFetchError = nil
                     // Filter out positions with 0 quantity (sold out)
                     let activePositions = positions.filter { $0.position != 0 }
                     
@@ -292,13 +301,33 @@ class DashboardViewModel: ObservableObject {
                             }
                         }
                     }
-                case .failure:
-                    break
+                case .failure(let error):
+                    self?.lastFetchError = Self.userFacingMessage(for: error)
                 }
             }
         }
     }
-    
+
+    nonisolated static func userFacingMessage(for error: Error) -> String {
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain {
+            switch ns.code {
+            case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost:
+                return "No internet connection."
+            case NSURLErrorTimedOut:
+                return "Request timed out. Try again."
+            case NSURLErrorUserAuthenticationRequired, NSURLErrorUserCancelledAuthentication:
+                return "Authentication failed. Check your API credentials in Settings."
+            default:
+                return "Network error: \(ns.localizedDescription)"
+            }
+        }
+        if error is DecodingError {
+            return "Unexpected response from Kalshi. Check that your API key has the required permissions."
+        }
+        return ns.localizedDescription
+    }
+
     private func calculateTotals() {
         // Portfolio-level realized ROI after fees, based on actual cost basis and current net proceeds
         let totalCost = positions.reduce(0.0) { $0 + $1.totalCostBasis }
