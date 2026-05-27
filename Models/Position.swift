@@ -1,6 +1,6 @@
 import Foundation
 
-struct Position: Identifiable, Codable {
+struct Position: Identifiable, Decodable {
     // MARK: - Nested Types
 
     struct ArbitrageOpportunity: Codable, Equatable {
@@ -60,14 +60,6 @@ struct Position: Identifiable, Codable {
         return Int((d * 100).rounded())
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case ticker
-        case positionFp = "position_fp"
-        case feesPaidDollars = "fees_paid_dollars"
-        case realizedPnlDollars = "realized_pnl_dollars"
-        case totalTradedDollars = "total_traded_dollars"
-        case marketExposureDollars = "market_exposure_dollars"
-    }
     
     // Enriched data from Market API
     var title: String?
@@ -246,17 +238,10 @@ struct Position: Identifiable, Codable {
 
     enum CodingKeys: String, CodingKey {
         case ticker
-        case position
-        case feesPaid
-        case realizedPnl
-        case totalTraded
-        case marketExposure
-        case title
-        case subtitle
-        case eventTicker
-        case yesBid
-        case yesAsk
-        case noBid
-        case noAsk
+        case positionFp = "position_fp"
+        case feesPaidDollars = "fees_paid_dollars"
+        case realizedPnlDollars = "realized_pnl_dollars"
+        case totalTradedDollars = "total_traded_dollars"
+        case marketExposureDollars = "market_exposure_dollars"
     }
 }
