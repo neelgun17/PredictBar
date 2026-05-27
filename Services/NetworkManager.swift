@@ -194,6 +194,8 @@ class NetworkManager {
             
             do {
                 let response = try JSONDecoder().decode(MarketResponse.self, from: data)
+                let m = response.market
+                NSLog("[PredictBar] fetchMarket(\(ticker)) decoded: status=\(m.status ?? "nil") lastPrice=\(m.lastPrice?.description ?? "nil") yesBid=\(m.yesBid?.description ?? "nil") noBid=\(m.noBid?.description ?? "nil") subtitle=\(m.subtitle ?? "nil")")
                 completion(.success(response.market))
             } catch {
                 try? data.write(to: URL(fileURLWithPath: "/tmp/predictbar-last-market-\(ticker).json"))
