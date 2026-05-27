@@ -74,7 +74,7 @@ class NetworkManager {
                 let decodedResponse = try decoder.decode(PortfolioResponse.self, from: data)
                 completion(.success(decodedResponse.marketPositions ?? []))
             } catch {
-                let bodyPreview = String(data: data.prefix(500), encoding: .utf8) ?? "<non-utf8>"
+                let bodyPreview = String(data: data.prefix(4000), encoding: .utf8) ?? "<non-utf8>"
                 NSLog("[PredictBar] fetchPortfolio decode failed: \(error). Body preview: \(bodyPreview)")
                 completion(.failure(error))
             }
@@ -114,7 +114,7 @@ class NetworkManager {
                 let decoded = try decoder.decode(BalanceResponse.self, from: data)
                 completion(.success(decoded))
             } catch {
-                let bodyPreview = String(data: data.prefix(500), encoding: .utf8) ?? "<non-utf8>"
+                let bodyPreview = String(data: data.prefix(4000), encoding: .utf8) ?? "<non-utf8>"
                 NSLog("[PredictBar] fetchBalance decode failed: \(error). Body preview: \(bodyPreview)")
                 completion(.failure(error))
             }
