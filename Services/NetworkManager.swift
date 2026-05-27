@@ -174,11 +174,13 @@ class NetworkManager {
                 let response = try JSONDecoder().decode(MarketResponse.self, from: data)
                 completion(.success(response.market))
             } catch {
+                try? data.write(to: URL(fileURLWithPath: "/tmp/predictbar-last-market-\(ticker).json"))
+                NSLog("[PredictBar] fetchMarket(\(ticker)) decode failed: \(error). Body written to /tmp/predictbar-last-market-\(ticker).json")
                 completion(.failure(error))
             }
         }.resume()
     }
-    
+
     struct EventResponse: Decodable {
         let event: Event
     }
