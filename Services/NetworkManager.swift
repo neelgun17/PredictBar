@@ -65,15 +65,17 @@ class NetworkManager {
 
             do {
                 struct PortfolioResponse: Decodable {
-                    let marketPositions: [Position]
+                    let marketPositions: [Position]?
                 }
 
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
 
                 let decodedResponse = try decoder.decode(PortfolioResponse.self, from: data)
-                completion(.success(decodedResponse.marketPositions))
+                completion(.success(decodedResponse.marketPositions ?? []))
             } catch {
+                let bodyPreview = String(data: data.prefix(500), encoding: .utf8) ?? "<non-utf8>"
+                NSLog("[PredictBar] fetchPortfolio decode failed: \(error). Body preview: \(bodyPreview)")
                 completion(.failure(error))
             }
         }.resume()
@@ -112,6 +114,8 @@ class NetworkManager {
                 let decoded = try decoder.decode(BalanceResponse.self, from: data)
                 completion(.success(decoded))
             } catch {
+                let bodyPreview = String(data: data.prefix(500), encoding: .utf8) ?? "<non-utf8>"
+                NSLog("[PredictBar] fetchBalance decode failed: \(error). Body preview: \(bodyPreview)")
                 completion(.failure(error))
             }
         }.resume()
