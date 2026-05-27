@@ -1,10 +1,44 @@
 import Foundation
 import Security
 
+enum APIError: LocalizedError {
+    case unauthorized(String?)
+    case forbidden(String?)
+    case server(status: Int, message: String?)
+    case unexpectedResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .unauthorized(let msg):
+            return msg.map { "Authentication failed: \($0)" } ?? "Authentication failed. Check your API key and private key in Settings."
+        case .forbidden(let msg):
+            return msg.map { "Access denied: \($0)" } ?? "Access denied. The API key may not have the required permissions."
+        case .server(let status, let msg):
+            return msg.map { "Kalshi API error (\(status)): \($0)" } ?? "Kalshi API returned an error (HTTP \(status))."
+        case .unexpectedResponse:
+            return "Unexpected response from Kalshi."
+        }
+    }
+}
+
+private struct KalshiErrorBody: Decodable {
+    struct Inner: Decodable { let code: String?; let message: String? }
+    let error: Inner?
+}
+
+private func apiError(for status: Int, body: Data) -> APIError {
+    let message = (try? JSONDecoder().decode(KalshiErrorBody.self, from: body))?.error?.message
+    switch status {
+    case 401: return .unauthorized(message)
+    case 403: return .forbidden(message)
+    default:  return .server(status: status, message: message)
+    }
+}
+
 class NetworkManager {
     static let shared = NetworkManager()
     private let baseURL = URL(string: "https://api.elections.kalshi.com/trade-api/v2")!
-    
+
     private init() {}
     
     func fetchPortfolio(completion: @escaping (Result<[Position], Error>) -> Void) {
@@ -18,20 +52,25 @@ class NetworkManager {
                 completion(.failure(error))
                 return
             }
-            
+
             guard let data = data else {
                 completion(.failure(URLError(.badServerResponse)))
                 return
             }
-            
+
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                completion(.failure(apiError(for: http.statusCode, body: data)))
+                return
+            }
+
             do {
                 struct PortfolioResponse: Decodable {
                     let marketPositions: [Position]
                 }
-                
+
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
-                
+
                 let decodedResponse = try decoder.decode(PortfolioResponse.self, from: data)
                 completion(.success(decodedResponse.marketPositions))
             } catch {
@@ -56,17 +95,22 @@ class NetworkManager {
                 completion(.failure(error))
                 return
             }
-            
+
             guard let data = data else {
                 completion(.failure(URLError(.badServerResponse)))
                 return
             }
-            
+
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                completion(.failure(apiError(for: http.statusCode, body: data)))
+                return
+            }
+
             do {
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
-                let response = try decoder.decode(BalanceResponse.self, from: data)
-                completion(.success(response))
+                let decoded = try decoder.decode(BalanceResponse.self, from: data)
+                completion(.success(decoded))
             } catch {
                 completion(.failure(error))
             }

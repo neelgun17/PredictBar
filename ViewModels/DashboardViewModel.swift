@@ -309,6 +309,9 @@ class DashboardViewModel: ObservableObject {
     }
 
     nonisolated static func userFacingMessage(for error: Error) -> String {
+        if let apiError = error as? APIError {
+            return apiError.errorDescription ?? "Kalshi API error."
+        }
         let ns = error as NSError
         if ns.domain == NSURLErrorDomain {
             switch ns.code {
@@ -323,7 +326,7 @@ class DashboardViewModel: ObservableObject {
             }
         }
         if error is DecodingError {
-            return "Unexpected response from Kalshi. Check that your API key has the required permissions."
+            return "Unexpected response from Kalshi. The API format may have changed."
         }
         return ns.localizedDescription
     }
