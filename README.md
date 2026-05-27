@@ -19,7 +19,7 @@ Add screenshots here:
 
 - **Real-time Portfolio Tracking** - View your total portfolio value, cash balance, and ROI directly in the menu bar
 - **Position Management** - See all active positions with current price, profit/loss, ROI, and sparkline charts
-- **Smart Alerts** - Get notified when positions hit customizable ROI thresholds, profit targets, or price targets
+- **Smart Alerts** - Get notified when positions hit customizable ROI thresholds, profit targets, price targets, stop-loss levels, or arbitrage/hedge opportunities
 - **Per-Position Alerts** - Configure individual alert settings for each position
 - **Multiple Display Modes** - Choose what to show in the menu bar: Cash Out Value, ROI %, P&L, Portfolio Value, or Balance
 - **Secure Storage** - API credentials stored in macOS Keychain (never saved to disk)
@@ -28,29 +28,26 @@ Add screenshots here:
 ## Requirements
 
 - **macOS 13.0** (Ventura) or later
+- **Swift 5.9+** (only needed if building from source)
 - A [Kalshi](https://kalshi.com) account with API access
-- For building from source: **Xcode Command Line Tools** (`xcode-select --install`) and Swift 5.9+. Full Xcode is only needed if you want to open the project in the IDE.
 
 ## Installation
 
-### Option 1: Download from GitHub Releases
+### Option 1: Download from GitHub Releases (Recommended for most users)
 
-1. Go to the [Releases](https://github.com/neelgun17/PredictBar/releases) page
-2. Download the latest `PredictBar-vX.X.X.zip`
-3. Unzip and drag `PredictBar.app` into your `/Applications` folder
-4. **Remove the macOS quarantine flag** (required — see below), then open the app. The icon will appear in your menu bar.
+1. Go to the [Releases](https://github.com/neelgun17/PredictBar/releases) page and download the latest `PredictBar-vX.X.X.zip`.
+2. Unzip and drag `PredictBar.app` into your `/Applications` folder.
+3. **Remove the macOS quarantine flag** (required on every install/update):
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/PredictBar.app
+   ```
+4. Open the app. The icon will appear in your menu bar.
 
-#### Why the extra step on first launch
+#### Why step 3 is necessary
 
-Release builds are ad-hoc signed (not notarized with a paid Apple Developer ID), so when you download the zip from a browser, macOS attaches a quarantine attribute. On macOS Sonoma and Sequoia, Gatekeeper will refuse to launch the app and may report **"PredictBar is damaged and can't be opened. Move it to the Trash."** This is not actually corruption — it's Gatekeeper blocking the unsigned app.
+Release builds are ad-hoc signed (not notarized with a paid Apple Developer ID), so macOS attaches a quarantine attribute to anything downloaded via browser. Without removing it, Gatekeeper will refuse to launch the app — often with **"PredictBar is damaged and can't be opened. Move it to the Trash."** This is not actually corruption.
 
-Run this once after dragging the app to `/Applications`:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/PredictBar.app
-```
-
-You'll need to repeat this command after each update. If you'd rather avoid it entirely — or you need reliable notifications (which may not fire under an ad-hoc signature) — build from source and sign with your own Apple Developer certificate (see below).
+If you'd rather avoid this step on every update — or you need reliable notifications (which may not fire under an ad-hoc signature) — build from source and sign with your own Apple Developer certificate (see Option 2).
 
 ### Option 2: Build from Source
 
