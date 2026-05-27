@@ -20,7 +20,8 @@ jobs:
       - name: Create GitHub Release
         # Pinned to a specific commit SHA to prevent supply-chain attacks via tag movement.
         # Verify the SHA at https://github.com/softprops/action-gh-release/releases before bumping.
-        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda  # v2.2.1
+        # v3.0.0 requires Node 24 runtime, which GitHub-hosted macos-14 runners support.
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
         with:
           files: PredictBar-${{ github.ref_name }}.zip
           generate_release_notes: true
