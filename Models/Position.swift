@@ -119,9 +119,14 @@ struct Position: Identifiable, Decodable {
     var currentPrice: Double = 0.0
     
     // MARK: - Realistic stats (if we sold everything right now)
-    //
-    // commission = 0.07 * contracts * sellPrice * (1 - sellPrice)
-    // rounded to nearest cent
+
+    /// Kalshi taker trading fee, rounded UP to the next cent per the official
+    /// fee schedule: ceil(0.07 * contracts * price * (1 - price)).
+    static func tradingFee(contracts: Double, price: Double) -> Double {
+        let raw = 0.07 * contracts * price * (1.0 - price)
+        return (raw * 100.0).rounded(.up) / 100.0
+    }
+
     private func calculateRealisticStats() -> (roi: Double, pnl: Double, netProceeds: Double) {
         let totalCost = totalCostBasis
         // If no meaningful cost basis, bail out
@@ -132,15 +137,9 @@ struct Position: Identifiable, Decodable {
 
         // Gross proceeds if we hit "Sell" on all contracts at currentPrice
         let gross = contracts * sellPrice
-        
-        // Raw commission for the whole position
-        let rawCommission = 0.07 * contracts * sellPrice * (1.0 - sellPrice)
-        
-        // Round commission to nearest cent
-        let roundedCommission = (rawCommission * 100.0).rounded(.toNearestOrAwayFromZero) / 100.0
-        
+
         // Net cash we actually get after commission
-        let netProceeds = gross - roundedCommission
+        let netProceeds = gross - Self.tradingFee(contracts: contracts, price: sellPrice)
         
         // PnL and ROI based on net proceeds
         let calculatedPnl = netProceeds - totalCost
@@ -200,11 +199,12 @@ struct Position: Identifiable, Decodable {
         // Determine price to buy opposite side
         let oppositeSideAsk: Double?
         if isYesPosition {
-            // For YES position, need to buy NO at noAsk
-            oppositeSideAsk = noAsk ?? yesAsk.map { 1.0 - $0 }
+            // For YES position, need to buy NO at noAsk. By orderbook parity
+            // noAsk = 1 - yesBid (Kalshi publishes only bids).
+            oppositeSideAsk = noAsk ?? yesBid.map { 1.0 - $0 }
         } else {
-            // For NO position, need to buy YES at yesAsk
-            oppositeSideAsk = yesAsk
+            // For NO position, need to buy YES at yesAsk (= 1 - noBid).
+            oppositeSideAsk = yesAsk ?? noBid.map { 1.0 - $0 }
         }
 
         guard let oppositePrice = oppositeSideAsk, oppositePrice > 0 else {
@@ -215,10 +215,7 @@ struct Position: Identifiable, Decodable {
         let originalCost = totalCostBasis
         let oppositeSideGross = contracts * oppositePrice
 
-        // Commission: 7% of contracts * price * (1 - price), rounded to nearest cent
-        let rawCommission = 0.07 * contracts * oppositePrice * (1.0 - oppositePrice)
-        let commission = (rawCommission * 100.0).rounded(.toNearestOrAwayFromZero) / 100.0
-
+        let commission = Self.tradingFee(contracts: contracts, price: oppositePrice)
         let totalCostToHedge = oppositeSideGross + commission
         let totalInvested = originalCost + totalCostToHedge
         let guaranteedPayout = contracts * 1.0

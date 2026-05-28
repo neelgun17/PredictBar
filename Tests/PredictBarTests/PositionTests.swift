@@ -118,6 +118,19 @@ final class PositionTests: XCTestCase {
         XCTAssertNil(price)
     }
 
+    // MARK: - Trading fee (rounded UP to the next cent per Kalshi fee schedule)
+
+    func testTradingFeeRoundsUpNotNearest() {
+        // 0.07 * 10 * 0.45 * 0.55 = 0.17325 -> 17.325¢.
+        // ceil -> $0.18 (round-to-nearest would wrongly give $0.17).
+        XCTAssertEqual(Position.tradingFee(contracts: 10, price: 0.45), 0.18, accuracy: 1e-9)
+    }
+
+    func testTradingFeeExactCentUnchanged() {
+        // 0.07 * 100 * 0.60 * 0.40 = 1.68 exactly -> $1.68.
+        XCTAssertEqual(Position.tradingFee(contracts: 100, price: 0.60), 1.68, accuracy: 1e-9)
+    }
+
     // MARK: - detectArbitrage
 
     func testDetectArbitrageProfitableHedge() {
@@ -145,6 +158,20 @@ final class PositionTests: XCTestCase {
 
         let arb = p.detectArbitrage(minimumProfit: 1.0)
         XCTAssertNil(arb)
+    }
+
+    func testDetectArbitrageYesPositionDerivesNoAskFromYesBid() throws {
+        // YES position, 100 contracts at 30¢ (cost $30). Only yesBid is known.
+        // noAsk must be derived as 1 - yesBid = 1 - 0.85 = 0.15 (NOT 1 - yesAsk).
+        // Buy 100 NO at 0.15 = $15; fee = ceil(0.07*100*0.15*0.85)= $0.90.
+        // Hedge $15.90; invested $45.90; payout $100; profit $54.10.
+        var p = makePosition(position: 100, marketExposure: 3000)
+        p.yesBid = 0.85
+        // noAsk and yesAsk intentionally nil — forces the fallback path.
+
+        let arb = try XCTUnwrap(p.detectArbitrage(minimumProfit: 1.0))
+        XCTAssertEqual(arb.oppositeSidePrice, 0.15, accuracy: 1e-9)
+        XCTAssertEqual(arb.guaranteedProfit, 54.10, accuracy: 0.01)
     }
 
     func testDetectArbitrageReturnsNilWhenNoOppositeQuote() {
