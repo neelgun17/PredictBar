@@ -92,6 +92,10 @@ class SettingsViewModel: ObservableObject {
     }
     
     func loadCredentialsState() {
+        if ProcessInfo.processInfo.environment["PREDICTBAR_DEMO"] == "1" {
+            self.hasCredentials = true
+            return
+        }
         self.hasCredentials = CredentialsManager.shared.hasCredentials()
     }
     

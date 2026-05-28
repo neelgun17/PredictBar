@@ -32,10 +32,18 @@ class DashboardViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
+    static var isDemoMode: Bool {
+        ProcessInfo.processInfo.environment["PREDICTBAR_DEMO"] == "1"
+    }
+
     init() {
         loadAlertStatesFromUserDefaults()
         loadCachedFills()
         setupBindings()
+        if Self.isDemoMode {
+            loadDemoData()
+            return
+        }
         fetchData()
         fetchTradeHistoryIfNeeded()
         WebSocketManager.shared.connect()
@@ -107,6 +115,7 @@ class DashboardViewModel: ObservableObject {
     }
     
     func fetchData() {
+        if Self.isDemoMode { return }
         // Skip fetches when credentials are missing; the UI shows a connect CTA instead.
         guard SettingsViewModel.shared.hasCredentials else { return }
 
@@ -329,6 +338,55 @@ class DashboardViewModel: ObservableObject {
             return "Unexpected response from Kalshi. The API format may have changed."
         }
         return ns.localizedDescription
+    }
+
+    // Curated portfolio for marketing screenshots. Activated via PREDICTBAR_DEMO=1.
+    private func loadDemoData() {
+        struct DemoSpec {
+            let ticker: String
+            let title: String
+            let subtitle: String
+            let qty: Int
+            let avg: Double
+            let current: Double
+        }
+        let specs: [DemoSpec] = [
+            .init(ticker: "KXNBAMVP-26-JOKIC", title: "Will Nikola Jokić win 2026 NBA MVP?", subtitle: "Nikola Jokić", qty: 50, avg: 0.22, current: 0.41),
+            .init(ticker: "KXWORLDCUP-26-FRA", title: "Will France win the 2026 Men's World Cup?", subtitle: "France", qty: 30, avg: 0.18, current: 0.27),
+            .init(ticker: "KXBTC-EOY26-150K", title: "Will Bitcoin close above $150k by EOY 2026?", subtitle: "Above $150,000", qty: 25, avg: 0.30, current: 0.44),
+            .init(ticker: "KXFED-DEC26-CUT", title: "Will the Fed cut rates at the Dec 2026 meeting?", subtitle: "Rate cut", qty: 40, avg: 0.55, current: 0.48),
+        ]
+
+        positions = specs.map { s in
+            let exposureCents = Int((s.avg * Double(s.qty) * 100).rounded())
+            var p = Position(
+                ticker: s.ticker,
+                position: s.qty,
+                feesPaid: 0,
+                realizedPnl: 0,
+                totalTraded: exposureCents,
+                marketExposure: exposureCents
+            )
+            p.title = s.title
+            p.subtitle = s.subtitle
+            p.status = "active"
+            p.currentPrice = s.current
+            p.yesBid = s.current
+            p.yesAsk = min(0.99, s.current + 0.01)
+            p.noBid = max(0.01, 1 - s.current - 0.01)
+            p.noAsk = 1 - s.current
+            let steps = 24
+            p.history = (0..<steps).map { i in
+                let t = Double(i) / Double(steps - 1)
+                return s.avg + (s.current - s.avg) * t
+            }
+            return p
+        }
+
+        accountBalance = 500.00
+        calculateTotals()
+        portfolioValue = accountBalance + totalCashOutValue
+        updateMenuBarText()
     }
 
     private func calculateTotals() {

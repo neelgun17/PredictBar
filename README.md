@@ -6,14 +6,14 @@ A native macOS menu bar application for tracking your prediction market portfoli
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-<!--
 ## Screenshots
 
-Add screenshots here:
-![Menu Bar](screenshots/menubar.png)
-![Dropdown View](screenshots/dropdown.png)
-![Settings](screenshots/settings.png)
--->
+<p align="center">
+  <img src="screenshots/dropdown.png" alt="PredictBar dropdown showing positions, P&L, and ROI" width="420">
+</p>
+<p align="center">
+  <img src="screenshots/menubar.png" alt="PredictBar menu bar item" width="160">
+</p>
 
 ## Features
 

@@ -14,15 +14,26 @@ fileprivate func safeOpenKalshi(_ url: URL?) -> Bool {
     return true
 }
 
+private struct PositionsContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct DropdownView: View {
     @ObservedObject var viewModel: DashboardViewModel
     @ObservedObject var settingsViewModel = SettingsViewModel.shared
     @Environment(\.openWindow) private var openWindow
-    
+
     // 0: Cash Out, 1: ROI, 2: P&L, 3: Portfolio Value, 4: Account Balance
     @State private var displayMode = 2
     @State private var configuringPosition: Position?
     @State private var hoveredTicker: String?
+
+    private let positionsMaxHeight: CGFloat = 240
+    @State private var positionsContentHeight: CGFloat = 0
+    private var positionsOverflow: Bool { positionsContentHeight > positionsMaxHeight + 1 }
     
     @AppStorage("appearanceMode") private var appearanceMode: String = "System"
     @AppStorage("compactMode") private var compactMode: Bool = false
@@ -359,8 +370,27 @@ struct DropdownView: View {
                                 }
                             }
                         }
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(key: PositionsContentHeightKey.self, value: proxy.size.height)
+                            }
+                        )
                     }
-                    .frame(maxHeight: 320)
+                    .frame(height: positionsContentHeight == 0
+                           ? positionsMaxHeight
+                           : min(positionsContentHeight, positionsMaxHeight))
+                    .onPreferenceChange(PositionsContentHeightKey.self) { positionsContentHeight = $0 }
+                    .mask(
+                        LinearGradient(
+                            gradient: Gradient(stops: [
+                                .init(color: .black, location: 0),
+                                .init(color: .black, location: positionsOverflow ? 0.72 : 1),
+                                .init(color: positionsOverflow ? .black.opacity(0) : .black, location: positionsOverflow ? 0.98 : 1)
+                            ]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
                 }
             }
             
