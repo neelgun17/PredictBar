@@ -32,6 +32,33 @@ final class SchemaDecodingTests: XCTestCase {
         XCTAssertEqual(p.entryPrice, 0.22, accuracy: 1e-9)
     }
 
+    func testPositionDecodesNegativeAndFractionalDollars() throws {
+        // Short (NO) position with a realized loss. Negative dollar strings must
+        // decode to negative cents, and sub-cent values round to the nearest cent.
+        let json = """
+        {
+            "ticker": "KXTEST-SHORT",
+            "position_fp": "-100.00",
+            "fees_paid_dollars": "0.125",
+            "realized_pnl_dollars": "-12.34",
+            "total_traded_dollars": "40.00",
+            "market_exposure_dollars": "40.00"
+        }
+        """.data(using: .utf8)!
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let p = try decoder.decode(Position.self, from: json)
+
+        XCTAssertEqual(p.position, -100)            // short position keeps its sign
+        XCTAssertEqual(p.quantity, 100)
+        XCTAssertEqual(p.side, "No")
+        XCTAssertEqual(p.realizedPnl, -1234)        // "-12.34" -> -1234 cents
+        XCTAssertEqual(p.feesPaid, 13)              // "0.125" -> 12.5¢ rounds to 13
+        XCTAssertEqual(p.marketExposure, 4000)
+        XCTAssertEqual(p.entryPrice, 0.40, accuracy: 1e-9)
+    }
+
     // MARK: - Market
 
     func testMarketDecodesDecimalSchema() throws {

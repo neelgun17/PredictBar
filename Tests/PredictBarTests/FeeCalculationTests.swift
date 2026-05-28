@@ -92,6 +92,29 @@ final class FeeCalculationTests: XCTestCase {
         XCTAssertEqual(Position.tradingFee(contracts: 2.5, price: 0.50), 0.05, accuracy: 1e-9)
     }
 
+    /// Strongest fee guarantee: across every integer price 1..99¢ and a range of
+    /// contract counts, the production fee must equal the exact rational fee
+    /// rounded UP to the next cent. The reference is computed in pure integer
+    /// arithmetic — fee_cents = ceil(7 * C * p * (100 - p) / 10000) — so it can't
+    /// drift with the same floating-point quirks the implementation guards
+    /// against. This pins both the formula AND the round-up behavior at once.
+    func testFeeMatchesIntegerCeilReferenceAcrossAllPrices() {
+        for contracts in [1, 7, 10, 33, 100, 200, 1000] {
+            for priceCents in 1...99 {
+                let numerator = 7 * contracts * priceCents * (100 - priceCents)
+                let expectedCents = (numerator + 9_999) / 10_000  // integer ceil
+                let actualCents = Int(
+                    (Position.tradingFee(contracts: Double(contracts),
+                                         price: Double(priceCents) / 100.0) * 100).rounded()
+                )
+                XCTAssertEqual(
+                    actualCents, expectedCents,
+                    "fee mismatch for \(contracts) contracts @ \(priceCents)¢"
+                )
+            }
+        }
+    }
+
     // MARK: - Net proceeds, P&L, ROI (fee applied to the sell)
 
     func testProfitNetsTheFee() {
@@ -122,6 +145,34 @@ final class FeeCalculationTests: XCTestCase {
         let p = position(contracts: 100, avgCents: 50, sellPrice: 0.01)
         XCTAssertEqual(p.netProceedsAfterFees, 0.93, accuracy: 1e-6)
         XCTAssertEqual(p.realizedPnL, -49.07, accuracy: 1e-6)
+    }
+
+    func testNetProceedsFloorWhenFeeEqualsGross() {
+        // 1 contract @ 50¢ ($0.50 cost), sell @ 1¢. Gross 0.01, fee
+        // ceil(0.0693)=0.01 — the fee exactly consumes the gross, so net is $0.00
+        // (never negative) and the whole cost basis is the loss.
+        let p = position(contracts: 1, avgCents: 50, sellPrice: 0.01)
+        XCTAssertEqual(p.netProceedsAfterFees, 0.0, accuracy: 1e-9)
+        XCTAssertEqual(p.realizedPnL, -0.50, accuracy: 1e-9)
+    }
+
+    func testShortNoPositionLossROI() {
+        // NO position: 100 @ 60¢ ($60 cost), sell @ 40¢. Gross 40, fee
+        // ceil(0.07*100*0.40*0.60)=ceil(1.68)=1.68, net 38.32, pnl -21.68.
+        let p = position(contracts: -100, avgCents: 60, sellPrice: 0.40)
+        XCTAssertEqual(p.side, "No")
+        XCTAssertEqual(p.realizedPnL, -21.68, accuracy: 1e-6)
+        XCTAssertEqual(p.realizedROI, -21.68 / 60.0, accuracy: 1e-9)
+    }
+
+    func testTotalCostBasisFallsBackToEntryPriceWithoutExposure() {
+        // No marketExposure → cost basis = contracts * entryPrice (from totalTraded).
+        // 50 contracts, totalTraded 1250¢ → entry 0.25, basis $12.50.
+        var p = Position(ticker: "FEE-TEST", position: 50, feesPaid: 0,
+                         realizedPnl: 0, totalTraded: 1250, marketExposure: nil)
+        p.currentPrice = 0.40
+        XCTAssertEqual(p.entryPrice, 0.25, accuracy: 1e-9)
+        XCTAssertEqual(p.totalCostBasis, 12.50, accuracy: 1e-9)
     }
 
     func testNoPosQuantityReturnsZeroStats() {
@@ -167,5 +218,31 @@ final class FeeCalculationTests: XCTestCase {
         var p = position(contracts: 100, avgCents: 99)
         p.noAsk = 0.99
         XCTAssertNil(p.detectArbitrage(minimumProfit: 1.0))
+    }
+
+    func testArbitrageNoPositionDerivesYesAskFromNoBidParity() throws {
+        // NO position 100 @ 40¢ ($40). Only noBid known → yesAsk = 1 - 0.85 = 0.15.
+        // Buy 100 YES @ 0.15 = $15, fee ceil(0.07*100*0.15*0.85)=ceil(0.8925)=0.90.
+        // Hedge 15.90; invested 55.90; payout 100; profit 44.10.
+        var p = position(contracts: -100, avgCents: 40)
+        p.noBid = 0.85   // yesAsk and noAsk intentionally nil — forces parity fallback
+        let arb = try XCTUnwrap(p.detectArbitrage(minimumProfit: 1.0))
+        XCTAssertEqual(arb.oppositeSidePrice, 0.15, accuracy: 1e-9)
+        XCTAssertEqual(arb.guaranteedProfit, 44.10, accuracy: 0.01)
+    }
+
+    func testArbitrageMinimumProfitBoundaryIsInclusive() {
+        // Profit is exactly $59.37. minimumProfit == profit must still fire (>=),
+        // while a hair above it must not.
+        var p = position(contracts: 100, avgCents: 30)
+        p.noAsk = 0.10
+        XCTAssertNotNil(p.detectArbitrage(minimumProfit: 59.37))
+        XCTAssertNil(p.detectArbitrage(minimumProfit: 59.38))
+    }
+
+    func testArbitrageFlatPositionReturnsNil() {
+        var p = position(contracts: 0, avgCents: 30)
+        p.noAsk = 0.10
+        XCTAssertNil(p.detectArbitrage(minimumProfit: 0.01))
     }
 }
