@@ -13,14 +13,16 @@ final class FeeCalculationTests: XCTestCase {
         avgCents: Int,
         sellPrice: Double = 0.0
     ) -> Position {
-        // marketExposure is the cost basis in cents: contracts * avg price.
+        // marketExposure is the cost basis in cents and is always positive,
+        // even for short (NO) positions: |contracts| * avg price.
+        let exposureCents = abs(contracts) * avgCents
         var p = Position(
             ticker: "FEE-TEST",
             position: contracts,
             feesPaid: 0,
             realizedPnl: 0,
-            totalTraded: contracts * avgCents,
-            marketExposure: contracts * avgCents
+            totalTraded: exposureCents,
+            marketExposure: exposureCents
         )
         p.currentPrice = sellPrice
         return p
