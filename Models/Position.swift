@@ -122,9 +122,13 @@ struct Position: Identifiable, Decodable {
 
     /// Kalshi taker trading fee, rounded UP to the next cent per the official
     /// fee schedule: ceil(0.07 * contracts * price * (1 - price)).
+    /// The raw value is normalized to clear floating-point noise (e.g. a true
+    /// 1.68 computing as 1.6800000000003) before the ceiling is applied, so an
+    /// exact-cent fee is not spuriously rounded up.
     static func tradingFee(contracts: Double, price: Double) -> Double {
-        let raw = 0.07 * contracts * price * (1.0 - price)
-        return (raw * 100.0).rounded(.up) / 100.0
+        let rawCents = 0.07 * contracts * price * (1.0 - price) * 100.0
+        let cleanedCents = (rawCents * 1_000_000).rounded() / 1_000_000
+        return cleanedCents.rounded(.up) / 100.0
     }
 
     private func calculateRealisticStats() -> (roi: Double, pnl: Double, netProceeds: Double) {
