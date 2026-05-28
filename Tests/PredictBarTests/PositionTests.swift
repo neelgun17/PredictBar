@@ -105,10 +105,10 @@ final class PositionTests: XCTestCase {
         XCTAssertEqual(price, 0.43)
     }
 
-    func testExecutableSellPriceNoFallsBackToOneMinusYesAsk() {
+    func testExecutableSellPriceNoFallsBackToOneMinusYesAsk() throws {
         // No noBid → derive from yesAsk: 1 - 0.58 = 0.42
         let p = makePosition(position: -100, marketExposure: 4000)
-        let price = p.executableSellPrice(yesBid: 0.55, noBid: nil, yesAsk: 0.58, lastPrice: 0.56)
+        let price = try XCTUnwrap(p.executableSellPrice(yesBid: 0.55, noBid: nil, yesAsk: 0.58, lastPrice: 0.56))
         XCTAssertEqual(price, 0.42, accuracy: 1e-9)
     }
 
