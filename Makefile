@@ -10,7 +10,7 @@ BUILD_NUMBER := $(shell git rev-list --count HEAD 2>/dev/null || echo "1")
 
 # --- Build targets ---
 
-.PHONY: build release run debug clean bundle sign zip dmg help
+.PHONY: build release run debug clean bundle sign zip dmg test help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -18,6 +18,9 @@ help: ## Show this help
 
 build: ## Build debug binary
 	swift build
+
+test: ## Run the test suite (unit + API schema smoke tests)
+	swift test
 
 release: ## Build release binary
 	swift build -c release
