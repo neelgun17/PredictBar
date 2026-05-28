@@ -33,7 +33,21 @@ A native macOS menu bar application for tracking your prediction market portfoli
 
 ## Installation
 
-### Option 1: Download from GitHub Releases (Recommended for most users)
+### Option 1: Homebrew
+
+```bash
+brew install --cask neelgun17/tap/predictbar
+```
+
+The app is ad-hoc signed (not notarized), so macOS still blocks the first launch. After installing, clear the quarantine flag once:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/PredictBar.app
+```
+
+Upgrade later with `brew upgrade --cask predictbar`.
+
+### Option 2: Download from GitHub Releases
 
 1. Go to the [Releases](https://github.com/neelgun17/PredictBar/releases) page and download the latest `PredictBar-vX.X.X.dmg`.
 2. Double-click the DMG, then drag `PredictBar.app` into the `Applications` shortcut inside the window.
@@ -42,11 +56,11 @@ A native macOS menu bar application for tracking your prediction market portfoli
 
 #### Why the right-click step is necessary
 
-Release builds are ad-hoc signed (not notarized with a paid Apple Developer ID), so Gatekeeper blocks the first launch. Right-clicking → Open whitelists the app permanently on your machine. Notifications may also be less reliable under ad-hoc signing — if you need them rock-solid, build from source and sign with your own Apple Developer certificate (see Option 2).
+Release builds are ad-hoc signed (not notarized with a paid Apple Developer ID), so Gatekeeper blocks the first launch. Right-clicking → Open whitelists the app permanently on your machine. Notifications may also be less reliable under ad-hoc signing — if you need them rock-solid, build from source and sign with your own Apple Developer certificate (see Option 3).
 
 > A `PredictBar-vX.X.X.zip` is also published if you prefer that format. Zip downloads pick up a stricter quarantine flag that can produce a misleading "damaged" error; if you hit it, run `xattr -dr com.apple.quarantine /Applications/PredictBar.app` once. The DMG path avoids this.
 
-### Option 2: Build from Source
+### Option 3: Build from Source
 
 1. **Clone the repository**:
    ```bash
