@@ -570,11 +570,12 @@ class NetworkManager {
                 let response = try JSONDecoder().decode(FillsResponse.self, from: data)
                 completion(.success(response))
             } catch {
+                try? data.write(to: URL(fileURLWithPath: "/tmp/predictbar-last-fills.json"))
+                NSLog("[PredictBar] fetchFills decode failed: \(error). Body written to /tmp/predictbar-last-fills.json")
                 completion(.failure(error))
             }
         }.resume()
     }
-    
     func fetchAllFills(completion: @escaping (Result<[Fill], Error>) -> Void) {
         var allFills: [Fill] = []
 

@@ -18,47 +18,62 @@ struct Fill: Codable, Identifiable {
         return (fee ?? 0) + (sideFee ?? 0)
     }
     
+    // Kalshi migrated fills to the same decimal-string schema as portfolio:
+    // count -> count_fp, price (int cents) -> yes/no_price_dollars strings,
+    // fee -> fee_cost string. We normalize back to cents/contracts here.
     enum CodingKeys: String, CodingKey {
         case tradeId = "trade_id"
         case marketTicker = "market_ticker"
         case isTaker = "is_taker"
         case side
-        case count
-        case fee // taker fee
-        case sideFee = "side_fee"
+        case countFp = "count_fp"
+        case feeCost = "fee_cost"
         case action
-        case price
+        case yesPriceDollars = "yes_price_dollars"
+        case noPriceDollars = "no_price_dollars"
         case createdTime = "created_time"
     }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         tradeId = try container.decode(String.self, forKey: .tradeId)
         marketTicker = try container.decode(String.self, forKey: .marketTicker)
         isTaker = try container.decodeIfPresent(Bool.self, forKey: .isTaker)
         side = try container.decode(String.self, forKey: .side)
-        count = try container.decode(Int.self, forKey: .count)
-        fee = try container.decodeIfPresent(Int.self, forKey: .fee)
-        sideFee = try container.decodeIfPresent(Int.self, forKey: .sideFee)
         action = try container.decode(String.self, forKey: .action)
         createdTime = try container.decodeIfPresent(String.self, forKey: .createdTime)
-        
-        // Robust price decoding (Int cents or Double dollars)
-        if let priceInt = try? container.decode(Int.self, forKey: .price) {
-            price = priceInt
-            // Check if it's unreasonably small for cents? No, 1 cent is possible.
-            // API V2 usually confusing. If 0 < x < 1, it's dollars.
-            // But if we decode Int, 0.56 -> 0? No, decoding Int from Float usually throws.
-        } else if let priceDouble = try? container.decode(Double.self, forKey: .price) {
-            price = Int(priceDouble * 100)
-        } else {
-             // Fallback to yes_price/no_price if available? 
-             // Currently failing safe to 0 or rethrowing is better?
-             // Let's assume 0 if totally missing, but it shouldn't be.
-             price = 0
-             // To be strict:
-             // throw DecodingError.dataCorruptedError(forKey: .price, in: container, debugDescription: "Price invalid")
+
+        let countString = try container.decode(String.self, forKey: .countFp)
+        count = Int((Double(countString) ?? 0).rounded())
+
+        fee = Self.decodeDollarsToCents(container, key: .feeCost)
+        sideFee = nil
+
+        // Price paid per contract is the price of the side that was filled.
+        let priceKey: CodingKeys = side.lowercased() == "no" ? .noPriceDollars : .yesPriceDollars
+        price = Self.decodeDollarsToCents(container, key: priceKey) ?? 0
+    }
+
+    private static func decodeDollarsToCents(_ c: KeyedDecodingContainer<CodingKeys>, key: CodingKeys) -> Int? {
+        guard let s = try? c.decodeIfPresent(String.self, forKey: key), let d = Double(s) else { return nil }
+        return Int((d * 100).rounded())
+    }
+
+    // Encode back into the API shape so cached fills round-trip through init(from:).
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(tradeId, forKey: .tradeId)
+        try c.encode(marketTicker, forKey: .marketTicker)
+        try c.encodeIfPresent(isTaker, forKey: .isTaker)
+        try c.encode(side, forKey: .side)
+        try c.encode(action, forKey: .action)
+        try c.encodeIfPresent(createdTime, forKey: .createdTime)
+        try c.encode(String(count), forKey: .countFp)
+        if let fee = fee {
+            try c.encode(String(format: "%.6f", Double(fee) / 100.0), forKey: .feeCost)
         }
+        let priceKey: CodingKeys = side.lowercased() == "no" ? .noPriceDollars : .yesPriceDollars
+        try c.encode(String(format: "%.4f", Double(price) / 100.0), forKey: priceKey)
     }
     
     // Default init for mocks
