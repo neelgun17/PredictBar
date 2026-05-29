@@ -68,7 +68,7 @@ final class PinnedURLSession: NSObject {
         // This ensures revocation, expiry, hostname, etc. are still checked.
         var error: CFError?
         guard SecTrustEvaluateWithError(trust, &error) else {
-            print("❌ TLS: system trust evaluation failed for \(host): \(error.map { CFErrorCopyDescription($0) as String } ?? "unknown")")
+            Log.tls.error("System trust evaluation failed for \(host, privacy: .public): \(error.map { CFErrorCopyDescription($0) as String } ?? "unknown", privacy: .public)")
             return false
         }
 
@@ -90,8 +90,7 @@ final class PinnedURLSession: NSObject {
                   let keyBits = attrs[kSecAttrKeySizeInBits as String] as? Int,
                   keyBits == 2048
             else {
-                print("⚠️ TLS: chain cert \(i) is not RSA-2048; pin verification cannot be performed. " +
-                      "Update spkiDER() in PinnedURLSession.swift to support the new key type.")
+                Log.tls.warning("Chain cert \(i) is not RSA-2048; pin verification cannot be performed. Update spkiDER() in PinnedURLSession.swift to support the new key type.")
                 continue
             }
 
@@ -105,7 +104,7 @@ final class PinnedURLSession: NSObject {
             }
         }
 
-        print("❌ TLS: certificate pinning failed for \(host) — no SPKI in chain matched any pin.")
+        Log.tls.error("Certificate pinning failed for \(host, privacy: .public) — no SPKI in chain matched any pin.")
         return false
     }
 

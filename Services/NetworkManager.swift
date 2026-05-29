@@ -40,7 +40,7 @@ class NetworkManager {
     private let baseURL = URL(string: "https://api.elections.kalshi.com/trade-api/v2")!
 
     private init() {}
-    
+
     func fetchPortfolio(completion: @escaping (Result<[Position], Error>) -> Void) {
         guard let request = authenticatedRequest(to: "/portfolio/positions") else {
             completion(.failure(URLError(.badURL)))
@@ -74,16 +74,56 @@ class NetworkManager {
                 let decodedResponse = try decoder.decode(PortfolioResponse.self, from: data)
                 completion(.success(decodedResponse.marketPositions ?? []))
             } catch {
-                try? data.write(to: URL(fileURLWithPath: "/tmp/predictbar-last-portfolio.json"))
-                NSLog("[PredictBar] fetchPortfolio decode failed: \(error). Full body written to /tmp/predictbar-last-portfolio.json")
+                Log.network.error("fetchPortfolio decode failed: \(String(describing: error), privacy: .public)")
                 completion(.failure(error))
             }
         }.resume()
     }
 
     struct BalanceResponse: Decodable {
-        let balance: Int
-        let portfolioValue: Int
+        let balance: Int          // cents
+        let portfolioValue: Int   // cents
+
+        enum CodingKeys: String, CodingKey {
+            case balance
+            case balanceDollars = "balance_dollars"
+            case portfolioValue = "portfolio_value"
+            case portfolioValueDollars = "portfolio_value_dollars"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            balance = Self.cents(c, centsKey: .balance, dollarsKey: .balanceDollars)
+            portfolioValue = Self.cents(c, centsKey: .portfolioValue, dollarsKey: .portfolioValueDollars)
+        }
+
+        // Memberwise init for mocks/tests.
+        init(balance: Int, portfolioValue: Int) {
+            self.balance = balance
+            self.portfolioValue = portfolioValue
+        }
+
+        /// Reads an amount as cents, accepting either the legacy integer-cents shape
+        /// (bare key) or the 2026 decimal-dollar-string shape (`*_dollars` key). Also
+        /// tolerant of a string under the bare key / an int under the dollars key.
+        private static func cents(_ c: KeyedDecodingContainer<CodingKeys>, centsKey: CodingKeys, dollarsKey: CodingKeys) -> Int {
+            if let v = (try? c.decodeIfPresent(Int.self, forKey: centsKey)) ?? nil { return v }
+            if let s = (try? c.decodeIfPresent(String.self, forKey: dollarsKey)) ?? nil, let d = Double(s) {
+                return Int((d * 100).rounded())
+            }
+            if let s = (try? c.decodeIfPresent(String.self, forKey: centsKey)) ?? nil, let d = Double(s) {
+                return Int((d * 100).rounded())
+            }
+            if let v = (try? c.decodeIfPresent(Int.self, forKey: dollarsKey)) ?? nil { return v }
+            return 0
+        }
+
+        /// Decodes a balance body. Kept as a dedicated entry point (no
+        /// `convertFromSnakeCase`, since the custom keys are already snake_case)
+        /// so the decode path is unit-testable.
+        static func decode(from data: Data) throws -> BalanceResponse {
+            try JSONDecoder().decode(BalanceResponse.self, from: data)
+        }
     }
 
     func fetchBalance(completion: @escaping (Result<BalanceResponse, Error>) -> Void) {
@@ -109,13 +149,10 @@ class NetworkManager {
             }
 
             do {
-                let decoder = JSONDecoder()
-                decoder.keyDecodingStrategy = .convertFromSnakeCase
-                let decoded = try decoder.decode(BalanceResponse.self, from: data)
+                let decoded = try BalanceResponse.decode(from: data)
                 completion(.success(decoded))
             } catch {
-                let bodyPreview = String(data: data.prefix(4000), encoding: .utf8) ?? "<non-utf8>"
-                NSLog("[PredictBar] fetchBalance decode failed: \(error). Body preview: \(bodyPreview)")
+                Log.network.error("fetchBalance decode failed: \(String(describing: error), privacy: .public)")
                 completion(.failure(error))
             }
         }.resume()
@@ -196,8 +233,7 @@ class NetworkManager {
                 let response = try JSONDecoder().decode(MarketResponse.self, from: data)
                 completion(.success(response.market))
             } catch {
-                try? data.write(to: URL(fileURLWithPath: "/tmp/predictbar-last-market-\(ticker).json"))
-                NSLog("[PredictBar] fetchMarket(\(ticker)) decode failed: \(error). Body written to /tmp/predictbar-last-market-\(ticker).json")
+                Log.network.error("fetchMarket(\(ticker, privacy: .public)) decode failed: \(String(describing: error), privacy: .public)")
                 completion(.failure(error))
             }
         }.resume()
@@ -239,11 +275,6 @@ class NetworkManager {
             }
             
             do {
-                // Debug: Print event response
-                // if let jsonStr = String(data: data, encoding: .utf8) {
-                //      print("Event Response for \(eventTicker): \(jsonStr)")
-                // }
-                
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 let response = try decoder.decode(EventResponse.self, from: data)
@@ -281,11 +312,6 @@ class NetworkManager {
             }
             
             do {
-                // Debug: Print series response
-                // if let jsonStr = String(data: data, encoding: .utf8) {
-                //      print("Series Response for \(seriesTicker): \(jsonStr)")
-                // }
-                
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 let response = try decoder.decode(SeriesResponse.self, from: data)
@@ -305,12 +331,10 @@ class NetworkManager {
         
         // Retrieve credentials securely
         guard let credentials = try? CredentialsManager.shared.getCredentials() else {
-            print("❌ Missing API credentials. Please add them in Settings.")
+            Log.network.error("Missing API credentials; cannot build authenticated request.")
             return nil
         }
-        
-        // print("DEBUG: Requesting URL: \(url.absoluteString)")
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -362,103 +386,74 @@ class NetworkManager {
         let low: Int?
     }
     
-    /// Fetch candlestick data for a market
-    func fetchCandles(seriesTicker: String, marketTicker: String, startTs: Int, endTs: Int, completion: @escaping (Result<[Candlestick], Error>) -> Void) {
-        var components = URLComponents(string: "/series/\(seriesTicker)/markets/\(marketTicker)/candlesticks")
-        components?.queryItems = [
-            URLQueryItem(name: "start_ts", value: String(startTs)),
-            URLQueryItem(name: "end_ts", value: String(endTs)),
-            URLQueryItem(name: "period_interval", value: "1") // 1 minute candles
-        ]
-        
-        guard let endpoint = components?.string,
-              let request = authenticatedRequest(to: endpoint) else {
-            completion(.failure(URLError(.badURL)))
-            return
+    /// Reduces candlesticks to a chronological price series, walking a fallback
+    /// ladder per candle (mid → trade → bid/ask average → bid → ask → `*_dollars`
+    /// string → carry-forward the last known value). Pure and side-effect free so
+    /// the history parsing can be unit-tested without a network round-trip.
+    static func extractPrices(from response: CandlestickResponse) -> [Double] {
+        let sorted = response.candlesticks.sorted { (lhs, rhs) in
+            (lhs.endPeriodTs ?? 0) < (rhs.endPeriodTs ?? 0)
         }
-        
-        PinnedURLSession.shared.session.dataTask(with: request) { data, response, error in
-            if let error = error { completion(.failure(error)); return }
-            guard let data = data else { completion(.failure(URLError(.badServerResponse))); return }
-            
-            do {
-                let decoder = JSONDecoder()
-                decoder.keyDecodingStrategy = .convertFromSnakeCase
-                let response = try decoder.decode(CandlestickResponse.self, from: data)
-                completion(.success(response.candlesticks))
-            } catch {
-                completion(.failure(error))
+
+        var lastMid: Double?
+
+        return sorted.compactMap { candle -> Double? in
+            if let midPrice = candle.midPrice?.close {
+                let mid = Double(midPrice) / 100.0
+                lastMid = mid
+                return mid
             }
-        }.resume()
+
+            if let trade = candle.price?.close ?? candle.yesPrice?.close {
+                let last = Double(trade) / 100.0
+                lastMid = last
+                return last
+            }
+
+            let bidClose = candle.yesBid?.close
+            let askClose = candle.yesAsk?.close
+
+            if let bid = bidClose, let ask = askClose {
+                let mid = Double(bid + ask) / 200.0
+                lastMid = mid
+                return mid
+            }
+
+            if let bid = bidClose {
+                let mid = Double(bid) / 100.0
+                lastMid = mid
+                return mid
+            }
+
+            if let ask = askClose {
+                let mid = Double(ask) / 100.0
+                lastMid = mid
+                return mid
+            }
+
+            if let dollars = candle.yesBid?.closeDollars, let value = Double(dollars) {
+                lastMid = value
+                return value
+            }
+
+            if let dollars = candle.yesAsk?.closeDollars, let value = Double(dollars) {
+                lastMid = value
+                return value
+            }
+
+            return lastMid
+        }
     }
-    
+
     /// Fetch market history using the documented series endpoint only (1m candles).
     func fetchMarketHistory(seriesTicker: String?, marketTicker: String, completion: @escaping (Result<[Double], Error>) -> Void) {
         func parsePrices(data: Data) throws -> [Double] {
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             let response = try decoder.decode(CandlestickResponse.self, from: data)
-            
-            let sorted = response.candlesticks.sorted { (lhs, rhs) in
-                (lhs.endPeriodTs ?? 0) < (rhs.endPeriodTs ?? 0)
-            }
-            
-            var lastMid: Double?
-            
-            let prices = sorted.compactMap { candle -> Double? in
-                if let midPrice = candle.midPrice?.close {
-                    let mid = Double(midPrice) / 100.0
-                    lastMid = mid
-                    return mid
-                }
-                
-                if let trade = candle.price?.close ?? candle.yesPrice?.close {
-                    let last = Double(trade) / 100.0
-                    lastMid = last
-                    return last
-                }
-                
-                let bidClose = candle.yesBid?.close
-                let askClose = candle.yesAsk?.close
-                
-                if let bid = bidClose, let ask = askClose {
-                    let mid = Double(bid + ask) / 200.0
-                    lastMid = mid
-                    return mid
-                }
-                
-                if let bid = bidClose {
-                    let mid = Double(bid) / 100.0
-                    lastMid = mid
-                    return mid
-                }
-                
-                if let ask = askClose {
-                    let mid = Double(ask) / 100.0
-                    lastMid = mid
-                    return mid
-                }
-                
-                if let dollars = candle.yesBid?.closeDollars, let value = Double(dollars) {
-                    lastMid = value
-                    return value
-                }
-                
-                if let dollars = candle.yesAsk?.closeDollars, let value = Double(dollars) {
-                    lastMid = value
-                    return value
-                }
-                
-                return lastMid
-            }
-            
-            return prices
+            return Self.extractPrices(from: response)
         }
-        
-        func logResponse(_ label: String, _ data: Data?, _ response: URLResponse?, _ error: Error?) {
-            // Logging disabled for production
-        }
-        
+
         func makeSeriesRequest(start: Int, end: Int) -> URLRequest? {
             guard let series = seriesTicker else { return nil }
             var components = URLComponents(string: "/series/\(series)/markets/\(marketTicker)/candlesticks")
@@ -471,26 +466,23 @@ class NetworkManager {
             return authenticatedRequest(to: endpoint)
         }
         
-        func runRequest(_ request: URLRequest, label: String, onResult: @escaping (Result<[Double], Error>) -> Void) {
+        func runRequest(_ request: URLRequest, onResult: @escaping (Result<[Double], Error>) -> Void) {
             PinnedURLSession.shared.session.dataTask(with: request) { data, response, error in
                 guard let http = response as? HTTPURLResponse else {
-                    logResponse(label, data, response, error)
                     onResult(.failure(URLError(.badServerResponse)))
                     return
                 }
-                
+
                 if !(200...299).contains(http.statusCode) {
-                    logResponse(label, data, response, error)
                     onResult(.failure(URLError(.badServerResponse)))
                     return
                 }
-                
+
                 guard let data = data else {
-                    logResponse(label, data, response, error)
                     onResult(.failure(URLError(.badServerResponse)))
                     return
                 }
-                
+
                 do {
                     let prices = try parsePrices(data: data)
                     if prices.isEmpty {
@@ -527,7 +519,7 @@ class NetworkManager {
                 completion(.failure(URLError(.badURL)))
                 return
             }
-            runRequest(seriesReq, label: "series \(seriesReq.url?.absoluteString ?? "")") { result in
+            runRequest(seriesReq) { result in
                 switch result {
                 case .success(let prices):
                     completion(.success(prices))
@@ -537,7 +529,10 @@ class NetworkManager {
                 }
             }
         }
-        
+
+        // Kick off the first window. Without this the completion handler was never
+        // invoked and the price history silently never loaded.
+        attemptWindow(index: 0)
     }
     
     // MARK: - Portfolio Endpoints
@@ -570,8 +565,7 @@ class NetworkManager {
                 let response = try JSONDecoder().decode(FillsResponse.self, from: data)
                 completion(.success(response))
             } catch {
-                try? data.write(to: URL(fileURLWithPath: "/tmp/predictbar-last-fills.json"))
-                NSLog("[PredictBar] fetchFills decode failed: \(error). Body written to /tmp/predictbar-last-fills.json")
+                Log.network.error("fetchFills decode failed: \(String(describing: error), privacy: .public)")
                 completion(.failure(error))
             }
         }.resume()

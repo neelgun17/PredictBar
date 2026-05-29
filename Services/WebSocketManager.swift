@@ -67,7 +67,7 @@ class WebSocketManager: ObservableObject {
         
         // Retrieve credentials securely
         guard let credentials = try? CredentialsManager.shared.getCredentials() else {
-            print("❌ WebSocket connection failed: Missing API credentials.")
+            Log.websocket.error("Connection failed: missing API credentials.")
             return nil
         }
         
@@ -159,35 +159,69 @@ class WebSocketManager: ObservableObject {
         let type: String?
         let msg: TickerData?
     }
-    
+
+    // Accepts both the legacy integer-cents shape (price/yes_bid/yes_ask) and the
+    // 2026 decimal-dollar-string shape (price_dollars/yes_bid_dollars/yes_ask_dollars),
+    // normalizing everything to Int cents — the representation the app expects.
     private struct TickerData: Decodable {
-        let market_ticker: String?
-        let price: Int?
-        let yes_bid: Int?
-        let yes_ask: Int?
-    }
-    
-    private func handleMessage(_ text: String) {
-        guard let data = text.data(using: .utf8) else { return }
-        
-        do {
-            let message = try JSONDecoder().decode(WebSocketMessage.self, from: data)
-            
-            if message.type == "ticker", let tickerData = message.msg, let ticker = tickerData.market_ticker {
-                // print(text) // raw ticker data payload
-                let quote = TickerQuote(
-                    ticker: ticker,
-                    lastPrice: tickerData.price,
-                    yesBid: tickerData.yes_bid,
-                    yesAsk: tickerData.yes_ask
-                )
-                
-                DispatchQueue.main.async {
-                    self.priceUpdate.send(quote)
-                }
+        let marketTicker: String?
+        let priceCents: Int?
+        let yesBidCents: Int?
+        let yesAskCents: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case marketTicker = "market_ticker"
+            case price
+            case priceDollars = "price_dollars"
+            case yesBid = "yes_bid"
+            case yesBidDollars = "yes_bid_dollars"
+            case yesAsk = "yes_ask"
+            case yesAskDollars = "yes_ask_dollars"
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            marketTicker = try c.decodeIfPresent(String.self, forKey: .marketTicker)
+            priceCents = Self.cents(c, centsKey: .price, dollarsKey: .priceDollars)
+            yesBidCents = Self.cents(c, centsKey: .yesBid, dollarsKey: .yesBidDollars)
+            yesAskCents = Self.cents(c, centsKey: .yesAsk, dollarsKey: .yesAskDollars)
+        }
+
+        private static func cents(_ c: KeyedDecodingContainer<CodingKeys>, centsKey: CodingKeys, dollarsKey: CodingKeys) -> Int? {
+            if let v = (try? c.decodeIfPresent(Int.self, forKey: centsKey)) ?? nil { return v }
+            if let s = (try? c.decodeIfPresent(String.self, forKey: dollarsKey)) ?? nil, let d = Double(s) {
+                return Int((d * 100).rounded())
             }
-        } catch {
-            return
+            if let s = (try? c.decodeIfPresent(String.self, forKey: centsKey)) ?? nil, let d = Double(s) {
+                return Int((d * 100).rounded())
+            }
+            return nil
+        }
+    }
+
+    /// Parses a raw ticker-channel message into a `TickerQuote` (cents), or nil if
+    /// the message is not a usable ticker update. Pure and side-effect free so the
+    /// decode path is unit-testable.
+    static func parseTickerQuote(from text: String) -> TickerQuote? {
+        guard let data = text.data(using: .utf8),
+              let message = try? JSONDecoder().decode(WebSocketMessage.self, from: data),
+              message.type == "ticker",
+              let tickerData = message.msg,
+              let ticker = tickerData.marketTicker else {
+            return nil
+        }
+        return TickerQuote(
+            ticker: ticker,
+            lastPrice: tickerData.priceCents,
+            yesBid: tickerData.yesBidCents,
+            yesAsk: tickerData.yesAskCents
+        )
+    }
+
+    private func handleMessage(_ text: String) {
+        guard let quote = Self.parseTickerQuote(from: text) else { return }
+        DispatchQueue.main.async {
+            self.priceUpdate.send(quote)
         }
     }
 }

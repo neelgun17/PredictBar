@@ -65,8 +65,7 @@ class DashboardViewModel: ObservableObject {
                 self?.updatePrice(with: quote)
             }
             .store(in: &cancellables)
-//            .store(in: &cancellables)
-            
+
         // Auto-refresh data every 30 seconds
         timer
             .sink { [weak self] _ in
@@ -98,11 +97,11 @@ class DashboardViewModel: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] hasCreds in
                 if hasCreds {
-                    print("🔑 Credentials updated, refreshing data...")
+                    Log.app.info("Credentials updated; refreshing data.")
                     self?.fetchData()
                     WebSocketManager.shared.connect()
                 } else {
-                    print("🔒 Credentials deleted, clearing data...")
+                    Log.app.info("Credentials deleted; clearing data.")
                     self?.positions = []
                     self?.portfolioValue = 0.0
                     self?.accountBalance = 0.0
@@ -501,22 +500,22 @@ class DashboardViewModel: ObservableObject {
             let data = try encoder.encode(positionAlertStates)
             UserDefaults.standard.set(data, forKey: "positionAlertStates")
         } catch {
-            print("⚠️ Failed to persist alert states: \(error)")
+            Log.alerts.error("Failed to persist alert states: \(String(describing: error), privacy: .public)")
         }
     }
 
     private func loadAlertStatesFromUserDefaults() {
         guard let data = UserDefaults.standard.data(forKey: "positionAlertStates") else {
-            print("📊 No persisted alert states found, starting fresh")
+            Log.alerts.debug("No persisted alert states found; starting fresh.")
             return
         }
 
         do {
             let decoder = JSONDecoder()
             positionAlertStates = try decoder.decode([String: PositionAlertState].self, from: data)
-            print("✅ Loaded alert states for \(positionAlertStates.count) positions")
+            Log.alerts.debug("Loaded alert states for \(self.positionAlertStates.count) positions.")
         } catch {
-            print("⚠️ Failed to decode alert states, resetting: \(error)")
+            Log.alerts.error("Failed to decode alert states; resetting: \(String(describing: error), privacy: .public)")
             positionAlertStates = [:]
         }
     }
@@ -740,16 +739,42 @@ class DashboardViewModel: ObservableObject {
         positionAlertStates[ticker] = state
     }
 
+    /// Single source of truth for whether arbitrage should be evaluated at all.
+    /// Requires the master Notifications switch, the global "Enable Arbitrage Alerts"
+    /// switch, the per-position alerts flag, the per-position arbitrage flag, and an
+    /// active market. Pure so it is unit-testable without spinning up the view model.
+    nonisolated static func shouldEvaluateArbitrage(
+        notificationsEnabled: Bool,
+        globalArbitrageEnabled: Bool,
+        positionAlertsEnabled: Bool,
+        positionArbitrageEnabled: Bool,
+        marketStatus: String?
+    ) -> Bool {
+        notificationsEnabled
+            && globalArbitrageEnabled
+            && positionAlertsEnabled
+            && positionArbitrageEnabled
+            && marketStatus == "active"
+    }
+
     private func checkArbitrageOpportunity(for position: inout Position) {
         let ticker = position.ticker
         var state = positionAlertStates[ticker] ?? PositionAlertState()
 
         // Get settings
-        let minProfit = SettingsViewModel.shared.minimumArbitrageProfit
-        let settings = SettingsViewModel.shared.getAlertSettings(for: ticker)
+        let settingsVM = SettingsViewModel.shared
+        let minProfit = settingsVM.minimumArbitrageProfit
+        let settings = settingsVM.getAlertSettings(for: ticker)
 
-        // Skip if disabled or market not active
-        guard settings.isEnabled, settings.arbitrageEnabled, position.status == "active" else {
+        // Respect the master Notifications switch and the global arbitrage switch,
+        // not just the per-position flag.
+        guard Self.shouldEvaluateArbitrage(
+            notificationsEnabled: settingsVM.notificationsEnabled,
+            globalArbitrageEnabled: settingsVM.arbitrageAlertsEnabled,
+            positionAlertsEnabled: settings.isEnabled,
+            positionArbitrageEnabled: settings.arbitrageEnabled,
+            marketStatus: position.status
+        ) else {
             position.lastArbitrageOpportunity = nil
             return
         }
@@ -1118,7 +1143,7 @@ class DashboardViewModel: ObservableObject {
         
         // Ensure the app is running in a proper .app bundle for notifications to work
         guard Bundle.main.bundleURL.pathExtension == "app" else {
-            print("Cannot send notification: App is not in a .app bundle")
+            Log.app.debug("Skipping notification: not running from a .app bundle.")
             return
         }
         
@@ -1145,7 +1170,7 @@ class DashboardViewModel: ObservableObject {
             fills = cached
             tradeMetrics = TradeMetrics.compute(from: cached)
         } catch {
-            print("⚠️ Failed to decode cached fills: \(error)")
+            Log.network.error("Failed to decode cached fills: \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -1156,7 +1181,7 @@ class DashboardViewModel: ObservableObject {
             UserDefaults.standard.set(data, forKey: "cachedFills")
             UserDefaults.standard.set(Date(), forKey: "fillsCacheTimestamp")
         } catch {
-            print("⚠️ Failed to cache fills: \(error)")
+            Log.network.error("Failed to cache fills: \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -1182,7 +1207,7 @@ class DashboardViewModel: ObservableObject {
                     self?.tradeMetrics = TradeMetrics.compute(from: fetchedFills)
                     self?.cacheFills(fetchedFills)
                 case .failure(let error):
-                    print("⚠️ Failed to fetch fills: \(error)")
+                    Log.network.error("Failed to fetch fills: \(String(describing: error), privacy: .public)")
                 }
             }
         }

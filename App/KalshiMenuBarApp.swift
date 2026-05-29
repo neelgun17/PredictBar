@@ -43,7 +43,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         UNUserNotificationCenter.current().delegate = self
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if let error = error {
-                print("Notification authorization error: \(error)")
+                Log.app.error("Notification authorization failed: \(String(describing: error), privacy: .public)")
             }
         }
     }

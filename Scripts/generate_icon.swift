@@ -17,9 +17,9 @@ let sizes: [(CGFloat, String)] = [
     (1024, "icon_512x512@2x"),
 ]
 
-// Create temporary iconset directory
-let iconsetPath = "/tmp/AppIcon.iconset"
+// Create temporary iconset directory in the per-user temp dir (not the shared /tmp).
 let fm = FileManager.default
+let iconsetPath = fm.temporaryDirectory.appendingPathComponent("PredictBar-AppIcon.iconset").path
 try? fm.removeItem(atPath: iconsetPath)
 try fm.createDirectory(atPath: iconsetPath, withIntermediateDirectories: true)
 

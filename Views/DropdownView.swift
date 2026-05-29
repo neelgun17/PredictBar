@@ -521,10 +521,6 @@ struct DropdownView: View {
         }
     }
     
-    private var isRunningFromAppBundle: Bool {
-        Bundle.main.bundleURL.pathExtension == "app"
-    }
-    
     private func openSettings() {
         SettingsWindowManager.shared.open()
     }

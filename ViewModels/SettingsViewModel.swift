@@ -106,7 +106,7 @@ class SettingsViewModel: ObservableObject {
             try CredentialsManager.shared.save(apiKey: key, privateKey: secret)
             loadCredentialsState()
         } catch {
-            print("Failed to save credentials: \(error)")
+            Log.credentials.error("Failed to save credentials: \(String(describing: error), privacy: .public)")
         }
     }
     
@@ -115,7 +115,7 @@ class SettingsViewModel: ObservableObject {
             try CredentialsManager.shared.delete()
             loadCredentialsState()
         } catch {
-            print("Failed to delete credentials: \(error)")
+            Log.credentials.error("Failed to delete credentials: \(String(describing: error), privacy: .public)")
         }
     }
     

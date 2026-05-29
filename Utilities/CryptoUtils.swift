@@ -19,7 +19,7 @@ struct CryptoUtils {
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard let keyData = Data(base64Encoded: cleanPEM) else {
-            print("❌ Failed to decode Private Key PEM. Please check format.")
+            Log.crypto.error("Failed to decode private key PEM; check format.")
             return nil
         }
 
@@ -30,7 +30,7 @@ struct CryptoUtils {
 
         var error: Unmanaged<CFError>?
         guard let key = SecKeyCreateWithData(keyData as CFData, attributes as CFDictionary, &error) else {
-            print("❌ Failed to import Private Key: \(error?.takeRetainedValue().localizedDescription ?? "Unknown error")")
+            Log.crypto.error("Failed to import private key: \(error?.takeRetainedValue().localizedDescription ?? "unknown error", privacy: .public)")
             return nil
         }
 
@@ -38,13 +38,13 @@ struct CryptoUtils {
         if let attrs = SecKeyCopyAttributes(key) as? [String: Any],
            let bits = attrs[kSecAttrKeySizeInBits as String] as? Int {
             guard bits >= minimumKeyBits else {
-                print("❌ RSA key is \(bits) bits; minimum required is \(minimumKeyBits).")
+                Log.crypto.error("RSA key is \(bits) bits; minimum required is \(minimumKeyBits).")
                 return nil
             }
         }
 
         guard SecKeyIsAlgorithmSupported(key, .sign, .rsaSignatureMessagePSSSHA256) else {
-            print("❌ Private Key does not support RSA-PSS-SHA256 algorithm.")
+            Log.crypto.error("Private key does not support RSA-PSS-SHA256 algorithm.")
             return nil
         }
 
@@ -62,7 +62,7 @@ struct CryptoUtils {
             data as CFData,
             &error
         ) else {
-            print("❌ Failed to create signature: \(error?.takeRetainedValue().localizedDescription ?? "Unknown error")")
+            Log.crypto.error("Failed to create signature: \(error?.takeRetainedValue().localizedDescription ?? "unknown error", privacy: .public)")
             return nil
         }
 

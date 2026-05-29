@@ -53,7 +53,7 @@ class CredentialsManager {
         try saveItem(account: secretKeyAccount, value: privateKey)
 
         cachedSigningKey = signingKey
-        print("✅ Credentials saved securely to Keychain.")
+        Log.credentials.info("Credentials saved to Keychain.")
     }
 
     /// Returns the API Key (UUID identifier). Read fresh from the Keychain each call —
@@ -89,7 +89,7 @@ class CredentialsManager {
         try deleteItem(account: accessKeyAccount)
         try deleteItem(account: secretKeyAccount)
         cachedSigningKey = nil
-        print("🗑️ Credentials removed from Keychain.")
+        Log.credentials.info("Credentials removed from Keychain.")
     }
 
     /// Checks if credentials exist in the Keychain without retrieving the secrets.
