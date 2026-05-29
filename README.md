@@ -45,7 +45,13 @@ The app is ad-hoc signed (not notarized), so macOS still blocks the first launch
 xattr -dr com.apple.quarantine /Applications/PredictBar.app
 ```
 
-Upgrade later with `brew upgrade --cask predictbar`.
+Then launch it:
+
+```bash
+open /Applications/PredictBar.app
+```
+
+The icon will appear in your menu bar (PredictBar runs as a menu bar app, so there's no dock icon). Upgrade later with `brew upgrade --cask predictbar`.
 
 ### Option 2: Download from GitHub Releases
 
