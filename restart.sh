@@ -25,6 +25,7 @@ mkdir -p PredictBar.app/Contents/Resources
 cp .build/release/PredictBar PredictBar.app/Contents/MacOS/
 cp Info.plist PredictBar.app/Contents/Info.plist
 cp Resources/AppIcon.icns PredictBar.app/Contents/Resources/AppIcon.icns
+cp Resources/MenuBarGlyph.png PredictBar.app/Contents/Resources/MenuBarGlyph.png
 
 # 5. Update Info.plist placeholders
 sed -i '' 's/$(EXECUTABLE_NAME)/PredictBar/g' PredictBar.app/Contents/Info.plist

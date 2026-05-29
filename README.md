@@ -116,6 +116,8 @@ Release builds are ad-hoc signed (not notarized with a paid Apple Developer ID),
 
 Your portfolio will load automatically once credentials are saved.
 
+> **Keychain prompt:** the first time PredictBar reads your saved credentials, macOS asks for permission to access the Keychain. Click **Always Allow** (not "Allow") — "Allow" only grants one-time access, so the prompt will keep reappearing. Because the app is ad-hoc signed, this prompt also returns once after each app update; choosing **Always Allow** each time is expected and safe.
+
 ## Usage
 
 ### Menu Bar
@@ -157,6 +159,7 @@ Click the menu bar icon to see:
 | "unidentified developer" on first launch | Expected for ad-hoc signed builds. Right-click the app → **Open** → **Open**. Required only once per install. |
 | "PredictBar is damaged and can't be opened" | This appears with zip downloads (not DMG). Run `xattr -dr com.apple.quarantine /Applications/PredictBar.app` once, or re-download the DMG. |
 | "Failed to decode Private Key" | Make sure you copied the entire key including `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----` |
+| Repeated Keychain password prompts | Click **Always Allow**, not "Allow." "Allow" grants one-time access and the app re-reads the Keychain on every refresh, so the prompt loops. The prompt also reappears once after each app update (expected for ad-hoc signed builds). |
 | Positions not loading | Check your internet connection. Try clicking Refresh in the dropdown. |
 | App not appearing in menu bar | The app runs as a menu bar app only (no dock icon). Look for the icon in your menu bar. |
 

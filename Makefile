@@ -33,6 +33,7 @@ bundle: release ## Build release + create signed .app bundle
 	@cp $(BUILD_DIR)/release/$(APP_NAME) $(BUNDLE)/Contents/MacOS/
 	@cp Info.plist $(BUNDLE)/Contents/Info.plist
 	@cp Resources/AppIcon.icns $(BUNDLE)/Contents/Resources/AppIcon.icns
+	@cp Resources/MenuBarGlyph.png $(BUNDLE)/Contents/Resources/MenuBarGlyph.png
 	@sed -i '' 's/$$(EXECUTABLE_NAME)/$(APP_NAME)/g' $(BUNDLE)/Contents/Info.plist
 	@sed -i '' 's/$$(PRODUCT_NAME)/$(APP_NAME)/g' $(BUNDLE)/Contents/Info.plist
 	@sed -i '' 's/$$(PRODUCT_BUNDLE_PACKAGE_TYPE)/APPL/g' $(BUNDLE)/Contents/Info.plist
