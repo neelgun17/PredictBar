@@ -18,7 +18,7 @@ A native macOS menu bar application for tracking your prediction market portfoli
 ## Features
 
 - **Real-time Portfolio Tracking** - View your total portfolio value, cash balance, and ROI directly in the menu bar
-- **Position Management** - See all active positions with current price, profit/loss, ROI, and sparkline charts
+- **Position Management** - See all active positions with current price, average entry, quantity, profit/loss, ROI, and one-click sell/hedge shortcuts
 - **Smart Alerts** - Get notified when positions hit customizable ROI thresholds, profit targets, price targets, stop-loss levels, or arbitrage/hedge opportunities
 - **Per-Position Alerts** - Configure individual alert settings for each position
 - **Multiple Display Modes** - Choose what to show in the menu bar: Cash Out Value, ROI %, P&L, Portfolio Value, or Balance
@@ -77,7 +77,7 @@ Release builds are ad-hoc signed (not notarized with a paid Apple Developer ID),
    ```bash
    make help       # show all available targets
    make build      # debug build only
-   make debug      # build and run with console output
+   make debug      # build and run the debug binary in the foreground
    make bundle     # create signed .app without launching
    ```
 
@@ -155,10 +155,14 @@ Click the menu bar icon to see:
 | App not appearing in menu bar | The app runs as a menu bar app only (no dock icon). Look for the icon in your menu bar. |
 
 ### View Logs
-To see detailed logs for debugging:
+PredictBar logs through the macOS unified logging system (subsystem
+`com.predictbar.app`), so the messages don't print to the terminal. Stream them
+live with:
 ```bash
-make debug
+log stream --predicate 'subsystem == "com.predictbar.app"' --level debug
 ```
+Or open **Console.app** and filter on `com.predictbar.app`. Use `make debug` to
+run the debug build in the foreground.
 
 ## Privacy & Security
 

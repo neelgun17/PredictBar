@@ -12,7 +12,7 @@ The following are in scope:
 - Credential leakage (Keychain bypass, logging secrets, writing keys to disk)
 - Code injection or command injection via API responses
 - Man-in-the-middle vulnerabilities in API communication
-- Signature bypass in the RSA-SHA256 authentication flow
+- Signature bypass in the RSA-PSS-SHA256 authentication flow
 
 ## Design Principles
 

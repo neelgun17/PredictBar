@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Build debug version
 swift build
 
-# Run debug binary (with console output)
+# Run debug binary in the foreground (logs go to the unified log, not stdout)
 .build/debug/PredictBar
 
 # Full rebuild + app bundle + code signing + launch
@@ -98,14 +98,14 @@ checkThresholds() (every 30s + on settings change)
 
 **WebSocket Integration:**
 - Live ticker quotes via `wss://api.elections.kalshi.com/trade-api/ws/v2`
-- Authentication: KALSHI-ACCESS-KEY header + RSA-SHA256 signature
+- Authentication: KALSHI-ACCESS-KEY header + RSA-PSS-SHA256 signature
 - Subscribe/unsubscribe to tickers dynamically based on open positions
 - Auto-reconnect on disconnection with 5-second delay
 - 10-second ping/pong keep-alive
 
 **Price Calculation** (Position.swift):
 - `currentPrice`: Executable sell price based on position side (yesBid for Yes, noAsk for No)
-- `realizedPnL`: Net profit after 7% commission (rounded to nearest cent)
+- `realizedPnL`: Net profit after 7% commission (rounded up to the next cent)
 - `realizedROI`: ROI calculation includes commission deduction
 - Commission formula: `0.07 × contracts × sellPrice × (1 - sellPrice)`
 
@@ -113,7 +113,7 @@ checkThresholds() (every 30s + on settings change)
 
 **API Authentication** (NetworkManager.swift + WebSocketManager.swift):
 - Credentials stored in macOS Keychain via `CredentialsManager`
-- Every API request signed with RSA-SHA256:
+- Every API request signed with RSA-PSS-SHA256:
   ```
   signature = sign(timestamp + method + path [+ body])
   Headers: KALSHI-ACCESS-KEY, KALSHI-ACCESS-SIGNATURE, KALSHI-ACCESS-TIMESTAMP
@@ -169,7 +169,7 @@ checkThresholds() (every 30s + on settings change)
 **Critical:** Always account for 7% commission on sells:
 - Use `position.realizedPnL` and `position.realizedROI` (includes commission)
 - Never calculate P&L directly from `currentPrice × quantity - cost`
-- Commission is rounded to nearest cent per API behavior
+- Commission is rounded UP to the next cent per Kalshi's fee schedule (`ceil`)
 
 ### WebSocket Ticker Subscription
 
@@ -189,13 +189,17 @@ When positions change:
 ## Testing & Debugging
 
 ### View Logs
+The app logs through the unified logging system (`os.Logger`, defined in
+`Utilities/Log.swift`) under subsystem `com.predictbar.app` — not stdout. Running
+the binary in a terminal will **not** print these; stream them instead:
 ```bash
-# Run with console output visible
-.build/debug/PredictBar
+# Live stream all app logs (categories: app, network, websocket, tls, credentials, crypto, alerts)
+log stream --predicate 'subsystem == "com.predictbar.app"' --level debug
 
-# Or use debug script
-./debug_run.sh  # outputs to debug_output.txt
+# Run the debug binary in the foreground (logs still go to the unified log)
+.build/debug/PredictBar
 ```
+Or open **Console.app** and filter on the `com.predictbar.app` subsystem.
 
 ### Common Debugging Scenarios
 

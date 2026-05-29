@@ -38,4 +38,4 @@
 Open an issue with:
 - macOS version
 - Steps to reproduce
-- Console output (`make debug` to capture logs)
+- Relevant logs (see "View Logs" in the README — stream the `com.predictbar.app` subsystem with `log stream`)
