@@ -384,7 +384,7 @@ struct DropdownView: View {
                         LinearGradient(
                             gradient: Gradient(stops: [
                                 .init(color: .black, location: 0),
-                                .init(color: .black, location: positionsOverflow ? 0.72 : 1),
+                                .init(color: .black, location: positionsOverflow ? 0.93 : 1),
                                 .init(color: positionsOverflow ? .black.opacity(0) : .black, location: positionsOverflow ? 0.98 : 1)
                             ]),
                             startPoint: .top,
