@@ -1,19 +1,5 @@
 import SwiftUI
 
-/// Opens a URL only if it points at kalshi.com over HTTPS. Market metadata
-/// (tickers, titles, slugs) comes from the API; this guards against the API
-/// being able to redirect the user's browser to an arbitrary host.
-@discardableResult
-fileprivate func safeOpenKalshi(_ url: URL?) -> Bool {
-    guard let url = url,
-          url.scheme == "https",
-          let host = url.host?.lowercased(),
-          host == "kalshi.com" || host.hasSuffix(".kalshi.com")
-    else { return false }
-    NSWorkspace.shared.open(url)
-    return true
-}
-
 private struct PositionsContentHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -28,6 +14,8 @@ struct DropdownView: View {
 
     // 0: Cash Out, 1: ROI, 2: P&L, 3: Portfolio Value, 4: Account Balance
     @State private var displayMode = 2
+    // 0: Positions, 1: Watchlist
+    @State private var selectedTab = 0
     @State private var configuringPosition: Position?
     @State private var hoveredTicker: String?
 
@@ -92,7 +80,111 @@ struct DropdownView: View {
             Divider()
                 .opacity(0.5)
             
-            // Positions Section
+            // Tab selector: Positions / Watchlist
+            Picker("", selection: $selectedTab) {
+                Text("Positions").tag(0)
+                Text("Watchlist").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
+
+            if selectedTab == 0 {
+                positionsSection
+            } else {
+                WatchlistView()
+            }
+
+            // Quick Stats Bar (shown under both tabs)
+            if let metrics = viewModel.tradeMetrics, metrics.totalTrades > 0 {
+                Divider()
+                    .opacity(0.5)
+
+                Button(action: { SettingsWindowManager.shared.open() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chart.bar.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Text("\(metrics.totalTrades) trades")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Text("·")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary.opacity(0.5))
+                        Text("\(Int(metrics.winRate * 100))% wins")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                        Text("·")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary.opacity(0.5))
+                        Text("\(metrics.totalRealizedPnL >= 0 ? "+" : "")\(metrics.totalRealizedPnL.formatted(.currency(code: "USD"))) realized")
+                            .font(.system(size: 11))
+                            .foregroundColor(metrics.totalRealizedPnL >= 0 ? .green : .red)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                }
+                .buttonStyle(.plain)
+                .help("Open Performance stats")
+            }
+
+            Divider()
+                .opacity(0.5)
+
+            // Account Section
+            VStack(alignment: .leading, spacing: 0) {
+                Text("ACCOUNT")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.secondary.opacity(0.8))
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
+
+                HStack(spacing: 10) {
+                    Image(systemName: getIconForMode(displayMode))
+                        .font(.system(size: 16))
+                        .foregroundColor(.blue)
+                        .frame(width: 16)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(getTitleForMode(displayMode))
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Click to cycle")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    Text(getValueForMode(displayMode))
+                        .font(.system(size: 13, weight: .semibold))
+                        .monospacedDigit()
+                        .foregroundColor(getColorForMode(displayMode))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        displayMode = (displayMode + 1) % 5
+                    }
+                }
+            }
+            .background(.ultraThinMaterial)
+        }
+        .frame(width: 360)
+        .background(.ultraThinMaterial) // Main background
+        .popover(item: $configuringPosition) { position in
+            PositionAlertConfigurationView(ticker: position.ticker, marketTitle: position.title ?? position.marketTicker)
+        }
+    }
+
+    // Positions tab content: credentials CTA, fetch error, empty state, or the list.
+    @ViewBuilder
+    private var positionsSection: some View {
             if !settingsViewModel.hasCredentials {
                 VStack(spacing: 10) {
                     Image(systemName: "key.horizontal")
@@ -393,92 +485,8 @@ struct DropdownView: View {
                     )
                 }
             }
-            
-            // Quick Stats Bar
-            if let metrics = viewModel.tradeMetrics, metrics.totalTrades > 0 {
-                Divider()
-                    .opacity(0.5)
-
-                Button(action: { SettingsWindowManager.shared.open() }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "chart.bar.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                        Text("\(metrics.totalTrades) trades")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        Text("·")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary.opacity(0.5))
-                        Text("\(Int(metrics.winRate * 100))% wins")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        Text("·")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary.opacity(0.5))
-                        Text("\(metrics.totalRealizedPnL >= 0 ? "+" : "")\(metrics.totalRealizedPnL.formatted(.currency(code: "USD"))) realized")
-                            .font(.system(size: 11))
-                            .foregroundColor(metrics.totalRealizedPnL >= 0 ? .green : .red)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                }
-                .buttonStyle(.plain)
-                .help("Open Performance stats")
-            }
-
-            Divider()
-                .opacity(0.5)
-
-            // Account Section
-            VStack(alignment: .leading, spacing: 0) {
-                Text("ACCOUNT")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.secondary.opacity(0.8))
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-                    .padding(.bottom, 4)
-                
-                HStack(spacing: 10) {
-                    Image(systemName: getIconForMode(displayMode))
-                        .font(.system(size: 16))
-                        .foregroundColor(.blue)
-                        .frame(width: 16)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(getTitleForMode(displayMode))
-                            .font(.system(size: 13, weight: .medium))
-                        Text("Click to cycle")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Spacer()
-                    
-                    Text(getValueForMode(displayMode))
-                        .font(.system(size: 13, weight: .semibold))
-                        .monospacedDigit()
-                        .foregroundColor(getColorForMode(displayMode))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        displayMode = (displayMode + 1) % 5
-                    }
-                }
-            }
-            .background(.ultraThinMaterial)
-        }
-        .frame(width: 360)
-        .background(.ultraThinMaterial) // Main background
-        .popover(item: $configuringPosition) { position in
-            PositionAlertConfigurationView(ticker: position.ticker, marketTitle: position.title ?? position.marketTicker)
-        }
     }
-    
+
     // Helper functions for cleaner body
     private func getIconForMode(_ mode: Int) -> String {
         switch mode {

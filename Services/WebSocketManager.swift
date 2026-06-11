@@ -32,10 +32,9 @@ class WebSocketManager: ObservableObject {
         startPing()
         
         // Auto-subscribe after connection (if we have tickers)
-        // Note: Ideally we'd store the tickers and re-subscribe here
         if !subscribedTickers.isEmpty {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.subscribeToTickers(self?.subscribedTickers ?? [])
+                self?.sendSubscription(for: self?.subscribedTickers ?? [])
             }
         }
     }
@@ -98,13 +97,43 @@ class WebSocketManager: ObservableObject {
     // Publisher for price updates with executable context
     let priceUpdate = PassthroughSubject<TickerQuote, Never>()
     
-    // Store subscribed tickers to re-subscribe on reconnection
+    // Store subscribed tickers to re-subscribe on reconnection.
+    // Two sources feed the subscription: portfolio positions and the watchlist.
+    // Each updates its own set; the socket always subscribes to the union.
     private var subscribedTickers: [String] = []
-    
+    private var positionTickers: Set<String> = []
+    private var watchlistTickers: Set<String> = []
+
+    /// Replaces the position-driven half of the subscription (called on portfolio refresh).
+    func setPositionTickers(_ tickers: [String]) {
+        let newSet = Set(tickers)
+        guard newSet != positionTickers else { return }
+        positionTickers = newSet
+        resubscribe()
+    }
+
+    /// Replaces the watchlist-driven half of the subscription (called on add/remove/prune).
+    func setWatchlistTickers(_ tickers: [String]) {
+        let newSet = Set(tickers)
+        guard newSet != watchlistTickers else { return }
+        watchlistTickers = newSet
+        resubscribe()
+    }
+
+    private func resubscribe() {
+        let union = positionTickers.union(watchlistTickers).sorted()
+        guard !union.isEmpty else { return }
+        subscribedTickers = union
+        sendSubscription(for: union)
+    }
+
     func subscribeToTickers(_ tickers: [String]) {
+        setPositionTickers(tickers)
+    }
+
+    private func sendSubscription(for tickers: [String]) {
         guard !tickers.isEmpty else { return }
-        self.subscribedTickers = tickers
-        
+
         // Construct the subscription message
         // Kalshi API expects "market_tickers" in params to filter
         let params: [String: Any] = [

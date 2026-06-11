@@ -239,6 +239,60 @@ class NetworkManager {
         }.resume()
     }
 
+    struct MarketsListResponse: Decodable {
+        let markets: [Market]
+        let cursor: String?
+    }
+
+    /// Lists markets for an event or series (used by the watchlist add flow to
+    /// resolve a pasted URL or event ticker into concrete market tickers).
+    func fetchMarkets(
+        eventTicker: String? = nil,
+        seriesTicker: String? = nil,
+        status: String? = "open",
+        limit: Int = 100,
+        completion: @escaping (Result<[Market], Error>) -> Void
+    ) {
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let eventTicker { queryItems.append(URLQueryItem(name: "event_ticker", value: eventTicker)) }
+        if let seriesTicker { queryItems.append(URLQueryItem(name: "series_ticker", value: seriesTicker)) }
+        if let status { queryItems.append(URLQueryItem(name: "status", value: status)) }
+
+        var components = URLComponents(string: "/markets")
+        components?.queryItems = queryItems
+
+        guard let endpoint = components?.string,
+              let request = authenticatedRequest(to: endpoint) else {
+            completion(.failure(URLError(.badURL)))
+            return
+        }
+
+        PinnedURLSession.shared.session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+
+            guard let data = data else {
+                completion(.failure(URLError(.badServerResponse)))
+                return
+            }
+
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                completion(.failure(apiError(for: http.statusCode, body: data)))
+                return
+            }
+
+            do {
+                let response = try JSONDecoder().decode(MarketsListResponse.self, from: data)
+                completion(.success(response.markets))
+            } catch {
+                Log.network.error("fetchMarkets decode failed: \(String(describing: error), privacy: .public)")
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+
     struct EventResponse: Decodable {
         let event: Event
     }

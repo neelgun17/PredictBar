@@ -165,7 +165,10 @@ class DashboardViewModel: ObservableObject {
                     
                     // Subscribe to WebSocket updates for these tickers
                     let tickers = positions.map { $0.ticker }
-                    WebSocketManager.shared.subscribeToTickers(tickers)
+                    WebSocketManager.shared.setPositionTickers(tickers)
+
+                    // Drop watchlist entries the user now holds a position in
+                    WatchlistViewModel.shared.pruneHeldTickers(activePositions.map { $0.ticker })
                     
                     // Fetch market details for each position
                     for (_, position) in positions.enumerated() {
@@ -442,6 +445,7 @@ class DashboardViewModel: ObservableObject {
         case targetPrice = "Price Target"
         case arbitrage = "Arbitrage"
         case stopLoss = "Stop-Loss"
+        case watchTarget = "Watch Target"
 
         var emoji: String {
             switch self {
@@ -451,6 +455,7 @@ class DashboardViewModel: ObservableObject {
             case .targetPrice: return "🎯"
             case .arbitrage: return "⚖️"
             case .stopLoss: return "🛑"
+            case .watchTarget: return "👀"
             }
         }
     }
@@ -1005,7 +1010,8 @@ class DashboardViewModel: ObservableObject {
     
     // MARK: - Notification Grouping
 
-    private func queueAlert(ticker: String, type: AlertType, title: String, body: String, url: URL?) {
+    // Internal (not private) so WatchlistViewModel reuses the same grouping pipeline.
+    func queueAlert(ticker: String, type: AlertType, title: String, body: String, url: URL?) {
         let alert = PendingAlert(
             ticker: ticker,
             type: type,
@@ -1054,6 +1060,9 @@ class DashboardViewModel: ObservableObject {
                     let roi = position.realizedROI.formatted(.percent.precision(.fractionLength(0)))
                     let pnl = position.realizedPnL.formatted(.currency(code: "USD"))
                     bodyLines.append("\(index + 1). \(name): \(roi) (\(pnl))")
+                } else {
+                    // Watchlist alerts have no backing position; fall back to the alert title
+                    bodyLines.append("\(index + 1). \(alert.title)")
                 }
             }
 
@@ -1076,7 +1085,7 @@ class DashboardViewModel: ObservableObject {
 
     // MARK: - Notification Formatting
 
-    private func formatNotificationTitle(marketTitle: String?, ticker: String, alertType: String, emoji: String, maxLength: Int = 50) -> String {
+    func formatNotificationTitle(marketTitle: String?, ticker: String, alertType: String, emoji: String, maxLength: Int = 50) -> String {
         // Reserve space for alert type, emoji, and spacing
         let prefix = "\(alertType): "
         let suffix = " \(emoji)"
