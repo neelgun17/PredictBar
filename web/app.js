@@ -189,6 +189,11 @@
       title: "🛑 Stop-loss triggered — Fed rate cut",
       body: 'Price fell to <b>$0.48</b>, below your <b>$0.50</b> stop. Down <b class="text-loss">−$2.80</b>.'
     },
+    watch: {
+      time: "now",
+      title: "👀 Watch Target — Fed cut in July",
+      body: 'Yes price hit <b>24¢</b>, at your <b>≤ 25¢</b> target. The dip you were waiting for.'
+    },
     arb: {
       time: "now",
       title: "⚖️ Arbitrage opportunity",

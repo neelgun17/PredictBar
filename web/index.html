@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PredictBar — Track your Kalshi portfolio from the menu bar</title>
-  <meta name="description" content="PredictBar is a native macOS menu bar app that tracks your Kalshi prediction-market portfolio in real time — cash-out value, P&L, or ROI at a glance, with one click to your full positions list and smart alerts." />
+  <meta name="description" content="PredictBar is a native macOS menu bar app that tracks your Kalshi prediction-market portfolio in real time — cash-out value, P&L, or ROI at a glance, with smart alerts and a watchlist that notifies you when a market hits your target price." />
   <link rel="canonical" href="https://predictbar.app/" />
 
   <!-- Icons -->
@@ -20,14 +20,14 @@
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="PredictBar" />
   <meta property="og:title" content="PredictBar — Track your Kalshi portfolio from the menu bar" />
-  <meta property="og:description" content="A native macOS menu bar app that tracks your Kalshi prediction-market portfolio in real time, with smart alerts. Free & open source." />
+  <meta property="og:description" content="A native macOS menu bar app that tracks your Kalshi prediction-market portfolio in real time, with smart alerts and a price-target watchlist. Free & open source." />
   <meta property="og:url" content="https://predictbar.app/" />
   <meta property="og:image" content="https://predictbar.app/assets/og-image.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="PredictBar — Track your Kalshi portfolio from the menu bar" />
-  <meta name="twitter:description" content="A native macOS menu bar app that tracks your Kalshi prediction-market portfolio in real time, with smart alerts. Free & open source." />
+  <meta name="twitter:description" content="A native macOS menu bar app that tracks your Kalshi prediction-market portfolio in real time, with smart alerts and a price-target watchlist. Free & open source." />
   <meta name="twitter:image" content="https://predictbar.app/assets/og-image.png" />
 
   <link rel="preload" href="/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin />
@@ -64,7 +64,7 @@
           <p class="eyebrow"><span class="eyebrow__dot"></span> macOS menu bar app · free &amp; open source</p>
           <h1 class="hero__title">Your Kalshi portfolio,<br /><span class="text-mint">always one glance away.</span></h1>
           <p class="hero__tag">Track your Kalshi prediction-market portfolio from the menu bar.</p>
-          <p class="hero__sub">PredictBar is a native macOS menu bar app that tracks your Kalshi prediction-market portfolio in real time — cash-out value, P&amp;L, or ROI at a glance, with one click to your full positions list and smart alerts.</p>
+          <p class="hero__sub">PredictBar is a native macOS menu bar app that tracks your Kalshi prediction-market portfolio in real time — cash-out value, P&amp;L, or ROI at a glance, with smart alerts and a watchlist that pings you the moment a market hits your price.</p>
 
           <div class="hero__cta">
             <button class="btn btn--mint copy-cmd" data-cmd="brew install --cask neelgun17/tap/predictbar">
@@ -227,6 +227,14 @@
 
         <article class="card reveal">
           <span class="card__ic">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.8" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+          </span>
+          <h3 class="card__title">Watchlist with price targets</h3>
+          <p class="card__body">Watch markets you don't own yet — paste a Kalshi link, set a target price, and get pinged the moment it gets there.</p>
+        </article>
+
+        <article class="card reveal">
+          <span class="card__ic">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9m0 18a9 9 0 0 0 9-9M7 12a5 5 0 0 1 5-5m0 10a5 5 0 0 0 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg>
           </span>
           <h3 class="card__title">Real-time prices</h3>
@@ -249,12 +257,13 @@
         <div class="alerts__copy reveal">
           <p class="eyebrow"><span class="eyebrow__dot"></span> Smart alerts</p>
           <h2 class="section__title">Get pinged only when it matters.</h2>
-          <p class="section__lede">Set thresholds globally or per position. State-based triggers with a buffer mean one clean notification, not a flood.</p>
+          <p class="section__lede">Set thresholds globally, per position, or on markets you're just watching. State-based triggers with a buffer mean one clean notification, not a flood.</p>
           <div class="chips" role="group" aria-label="Alert types — select one to preview the notification">
             <button class="chip is-active" type="button" data-alert="roi" aria-pressed="true">ROI threshold</button>
             <button class="chip" type="button" data-alert="profit" aria-pressed="false">Profit target</button>
             <button class="chip" type="button" data-alert="price" aria-pressed="false">Price target</button>
             <button class="chip" type="button" data-alert="stop" aria-pressed="false">Stop-loss</button>
+            <button class="chip" type="button" data-alert="watch" aria-pressed="false">Watch target</button>
             <button class="chip" type="button" data-alert="arb" aria-pressed="false">Arbitrage detection</button>
           </div>
           <p class="chips__hint">Select a type to preview its notification.</p>
