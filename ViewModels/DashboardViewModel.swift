@@ -32,6 +32,12 @@ class DashboardViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
+    /// Tickers whose metadata-enrichment cascade (event/series/URL/history) is
+    /// currently in flight, so a new 30s refresh cycle doesn't launch a duplicate.
+    /// The cascade fetches immutable data (series, slug URL, candle history), so it
+    /// only needs to run once per ticker — see the gate in `fetchData()`.
+    private var enrichmentInFlight: Set<String> = []
+
     static var isDemoMode: Bool {
         ProcessInfo.processInfo.environment["PREDICTBAR_DEMO"] == "1"
     }
@@ -162,6 +168,13 @@ class DashboardViewModel: ObservableObject {
                     
                     self?.positions = mergedPositions
                     self?.calculateTotals()
+
+                    // Drop in-flight flags for tickers we no longer hold, so a
+                    // re-added position re-enriches its metadata.
+                    if let self {
+                        self.enrichmentInFlight = self.enrichmentInFlight
+                            .intersection(Set(mergedPositions.map { $0.ticker }))
+                    }
                     
                     // Subscribe to WebSocket updates for these tickers
                     let tickers = positions.map { $0.ticker }
@@ -239,11 +252,25 @@ class DashboardViewModel: ObservableObject {
                                         if let finalPosition = updatedPosition {
                                             self?.positions[currentIdx] = finalPosition
                                             self?.calculateTotals()
-                                            
+
+                                            // Enrich immutable metadata (series, slug URL, candle
+                                            // history) only once per ticker. The merge above
+                                            // preserves it across refreshes, so re-fetching it every
+                                            // 30s cycle is pure waste — the dominant source of the
+                                            // app's long-uptime memory growth.
+                                            let cached = self?.positions.first(where: { $0.ticker == position.ticker })
+                                            let alreadyEnriched = cached?.seriesTicker != nil && cached?.marketUrl != nil
+                                            guard !alreadyEnriched,
+                                                  self?.enrichmentInFlight.contains(position.ticker) == false else { return }
+                                            self?.enrichmentInFlight.insert(position.ticker)
+
                                             // Fetch Event details to get the correct URL slug
                                             let eventTicker = market.eventTicker
                                             NetworkManager.shared.fetchEvent(eventTicker: eventTicker) { [weak self] result in
                                                     DispatchQueue.main.async {
+                                                        // Cascade settled (or failed) — allow a retry
+                                                        // next cycle if it didn't fully enrich.
+                                                        self?.enrichmentInFlight.remove(position.ticker)
                                                         switch result {
                                                         case .success(let event):
                                                             // Store series ticker for later use
