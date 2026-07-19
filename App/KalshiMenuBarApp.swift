@@ -34,6 +34,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         // About panel — do NOT override it with an SF Symbol, or notifications show
         // the generic glyph instead of the app logo.
 
+        MemoryMonitor.shared.start()
+
         // Only setup notifications when running as a proper app bundle
         guard Bundle.main.bundleURL.pathExtension == "app" else { return }
 

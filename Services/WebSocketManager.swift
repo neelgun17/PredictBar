@@ -52,13 +52,19 @@ class WebSocketManager: ObservableObject {
     }
     
     private func handleDisconnection() {
-        guard isConnected else { return }
-        isConnected = false
-        pingTimer?.invalidate()
-        
-        reconnectTimer?.invalidate()
-        reconnectTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
-            self?.connect()
+        // URLSession delivers ping/receive callbacks on its delegate queue. A Timer
+        // scheduled from one of those threads attaches to a run loop that never runs,
+        // so it never fires — auto-reconnect was silently broken. Timers must also be
+        // invalidated from the thread they were installed on. Hop to main for both.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isConnected else { return }
+            self.isConnected = false
+            self.pingTimer?.invalidate()
+
+            self.reconnectTimer?.invalidate()
+            self.reconnectTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
+                self?.connect()
+            }
         }
     }
     

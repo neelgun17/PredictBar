@@ -32,6 +32,16 @@ class DashboardViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
+    /// Desired menu bar text. Deduplicated and throttled in `setupBindings()`
+    /// before it reaches the published `menuBarText` that AppKit renders.
+    private let menuBarTextSubject = PassthroughSubject<String, Never>()
+
+    /// Tickers whose metadata-enrichment cascade (event/series/URL/history) is
+    /// currently in flight, so a new 30s refresh cycle doesn't launch a duplicate.
+    /// The cascade fetches immutable data (series, slug URL, candle history), so it
+    /// only needs to run once per ticker — see the gate in `fetchData()`.
+    private var enrichmentInFlight: Set<String> = []
+
     static var isDemoMode: Bool {
         ProcessInfo.processInfo.environment["PREDICTBAR_DEMO"] == "1"
     }
@@ -54,11 +64,28 @@ class DashboardViewModel: ObservableObject {
     }
 
     private func setupBindings() {
+        // NOTE: `.assign(to:on: self)` retains self and would cycle through
+        // `cancellables`, making the view model immortal. Use a weak sink.
         WebSocketManager.shared.$isConnected
             .receive(on: RunLoop.main)
-            .assign(to: \.isConnected, on: self)
+            .sink { [weak self] connected in
+                self?.isConnected = connected
+            }
             .store(in: &cancellables)
-            
+
+        // The menu bar label re-renders every time `menuBarText` changes, and AppKit
+        // re-rasterizes the status item each time. During busy markets quotes arrive
+        // many times a second; coalesce label updates to at most one per second and
+        // drop no-op updates entirely so weeks of uptime don't accumulate churn.
+        menuBarTextSubject
+            .removeDuplicates()
+            .throttle(for: .seconds(1), scheduler: RunLoop.main, latest: true)
+            .sink { [weak self] text in
+                guard let self, text != self.menuBarText else { return }
+                self.menuBarText = text
+            }
+            .store(in: &cancellables)
+
         WebSocketManager.shared.priceUpdate
             .receive(on: RunLoop.main)
             .sink { [weak self] quote in
@@ -105,7 +132,7 @@ class DashboardViewModel: ObservableObject {
                     self?.positions = []
                     self?.portfolioValue = 0.0
                     self?.accountBalance = 0.0
-                    self?.menuBarText = "PredictBar"
+                    self?.menuBarTextSubject.send("PredictBar")
                     self?.lastFetchError = nil
                     WebSocketManager.shared.disconnect()
                 }
@@ -162,6 +189,13 @@ class DashboardViewModel: ObservableObject {
                     
                     self?.positions = mergedPositions
                     self?.calculateTotals()
+
+                    // Drop in-flight flags for tickers we no longer hold, so a
+                    // re-added position re-enriches its metadata.
+                    if let self {
+                        self.enrichmentInFlight = self.enrichmentInFlight
+                            .intersection(Set(mergedPositions.map { $0.ticker }))
+                    }
                     
                     // Subscribe to WebSocket updates for these tickers
                     let tickers = positions.map { $0.ticker }
@@ -239,11 +273,30 @@ class DashboardViewModel: ObservableObject {
                                         if let finalPosition = updatedPosition {
                                             self?.positions[currentIdx] = finalPosition
                                             self?.calculateTotals()
-                                            
+
+                                            // Enrich immutable metadata (series, slug URL, candle
+                                            // history) only once per ticker. The merge above
+                                            // preserves it across refreshes, so re-fetching it every
+                                            // 30s cycle is pure waste — the dominant source of the
+                                            // app's long-uptime memory growth.
+                                            // `seriesTitle` is only ever set by the cascade's final
+                                            // fetchSeries step, so it marks true completion. (The
+                                            // seriesTicker/marketUrl pair is already set just above
+                                            // from the market payload, so testing those would skip
+                                            // the cascade before it ever ran.)
+                                            let cached = self?.positions.first(where: { $0.ticker == position.ticker })
+                                            let alreadyEnriched = cached?.seriesTitle != nil
+                                            guard !alreadyEnriched,
+                                                  self?.enrichmentInFlight.contains(position.ticker) == false else { return }
+                                            self?.enrichmentInFlight.insert(position.ticker)
+
                                             // Fetch Event details to get the correct URL slug
                                             let eventTicker = market.eventTicker
                                             NetworkManager.shared.fetchEvent(eventTicker: eventTicker) { [weak self] result in
                                                     DispatchQueue.main.async {
+                                                        // Cascade settled (or failed) — allow a retry
+                                                        // next cycle if it didn't fully enrich.
+                                                        self?.enrichmentInFlight.remove(position.ticker)
                                                         switch result {
                                                         case .success(let event):
                                                             // Store series ticker for later use
@@ -408,21 +461,23 @@ class DashboardViewModel: ObservableObject {
     
     func updateMenuBarText() {
         let metric = SettingsViewModel.shared.menuBarMetric
-        
+
+        let text: String
         switch metric {
         case "Cash Out":
-            menuBarText = totalCashOutValue.formatted(.currency(code: "USD"))
+            text = totalCashOutValue.formatted(.currency(code: "USD"))
         case "ROI":
-            menuBarText = overallROI.formatted(.percent.precision(.fractionLength(1)))
+            text = overallROI.formatted(.percent.precision(.fractionLength(1)))
         case "PnL":
-            menuBarText = overallPnL.formatted(.currency(code: "USD"))
+            text = overallPnL.formatted(.currency(code: "USD"))
         case "Portfolio":
-            menuBarText = portfolioValue.formatted(.currency(code: "USD"))
+            text = portfolioValue.formatted(.currency(code: "USD"))
         case "Balance":
-            menuBarText = accountBalance.formatted(.currency(code: "USD"))
+            text = accountBalance.formatted(.currency(code: "USD"))
         default:
-            menuBarText = totalCashOutValue.formatted(.currency(code: "USD"))
+            text = totalCashOutValue.formatted(.currency(code: "USD"))
         }
+        menuBarTextSubject.send(text)
     }
     
     private var lastNotificationTime: Date?
@@ -478,7 +533,15 @@ class DashboardViewModel: ObservableObject {
         }
     }
 
-    struct PositionAlertState: Codable {
+    /// Writes a position's alert state only when it actually changed. The dictionary's
+    /// `didSet` JSON-encodes everything into UserDefaults, so unconditional writes from
+    /// the per-tick check paths would serialize + hit cfprefsd on every price update.
+    private func setAlertState(_ state: PositionAlertState, for ticker: String) {
+        guard positionAlertStates[ticker] != state else { return }
+        positionAlertStates[ticker] = state
+    }
+
+    struct PositionAlertState: Codable, Equatable {
         var roiState: ROIState = .neutral
         var lastHighROIAlertTime: Date? = nil
         var lastLowROIAlertTime: Date? = nil
@@ -529,25 +592,29 @@ class DashboardViewModel: ObservableObject {
         }
         
         // 2. Check Individual Positions
-        for index in positions.indices {
-            var position = positions[index]
+        // Mutate a local copy and publish once at the end — writing `positions[index]`
+        // inside the loop fires objectWillChange (and a full SwiftUI re-render) once
+        // per position, every 30s cycle and every price tick.
+        var updatedPositions = positions
+        for index in updatedPositions.indices {
+            var position = updatedPositions[index]
             let ticker = position.ticker
             let settings = settingsVM.getAlertSettings(for: ticker)
-            
+
             // Skip if alerts are disabled for this position
             if !settings.isEnabled { continue }
-            
+
             // Determine effective thresholds
             let highThreshold = settings.useGlobal ? settingsVM.highROIThreshold : (settings.highROI ?? settingsVM.highROIThreshold)
             let lowThreshold = settings.useGlobal ? settingsVM.lowROIThreshold : (settings.lowROI ?? settingsVM.lowROIThreshold)
             let targetProfit = settings.targetProfit
             let targetPrice = settings.targetPrice
-            
+
             // Skip if price hasn't loaded yet (default is 0.0)
             if position.currentPrice == 0 { continue }
-            
+
             let newROI = position.realizedROI * 100.0
-            
+
             handleAlerts(for: &position, newROI: newROI, highThreshold: highThreshold, lowThreshold: lowThreshold, targetProfit: targetProfit, targetPrice: targetPrice)
 
             // Check for arbitrage opportunities
@@ -558,8 +625,9 @@ class DashboardViewModel: ObservableObject {
 
             // Update lastROI (still useful for debugging or other logic, but state drives alerts now)
             position.lastROI = newROI
-            positions[index] = position
+            updatedPositions[index] = position
         }
+        positions = updatedPositions
     }
     
     private func handleAlerts(for position: inout Position, newROI: Double, highThreshold: Double, lowThreshold: Double, targetProfit: Double?, targetPrice: Double?) {
@@ -736,7 +804,7 @@ class DashboardViewModel: ObservableObject {
 
         // Update state in dictionary (after all checks)
         state.roiState = newState
-        positionAlertStates[ticker] = state
+        setAlertState(state, for: ticker)
     }
 
     /// Single source of truth for whether arbitrage should be evaluated at all.
@@ -824,7 +892,7 @@ class DashboardViewModel: ObservableObject {
             position.lastArbitrageOpportunity = nil
         }
 
-        positionAlertStates[ticker] = state
+        setAlertState(state, for: ticker)
     }
 
     private func checkStopLoss(for position: inout Position) {
@@ -940,7 +1008,7 @@ class DashboardViewModel: ObservableObject {
             }
         }
 
-        positionAlertStates[ticker] = state
+        setAlertState(state, for: ticker)
     }
 
     private func checkPortfolioThresholds() {
@@ -1223,6 +1291,18 @@ class DashboardViewModel: ObservableObject {
         let yesAsk = quote.yesAsk.map { Double($0) / 100.0 }
         let lastPrice = quote.lastPrice.map { Double($0) / 100.0 }
 
+        // WebSocket stream does not carry noBid; fall back to derived price for "No"
+        guard let executable = position.executableSellPrice(yesBid: yesBid, noBid: nil, yesAsk: yesAsk, lastPrice: lastPrice) else {
+            return
+        }
+
+        // The exchange resends identical ticks constantly. Dropping no-op quotes
+        // keeps the @Published graph quiet: no re-render of the menu bar label or
+        // dropdown, no threshold re-check, no alert-state writes.
+        if position.currentPrice == executable, position.yesBid == yesBid, position.yesAsk == yesAsk {
+            return
+        }
+
         // Store YES prices from WebSocket
         position.yesBid = yesBid
         position.yesAsk = yesAsk
@@ -1232,22 +1312,17 @@ class DashboardViewModel: ObservableObject {
             position.noBid = 1.0 - yesAsk
         }
 
-        // WebSocket stream does not carry noBid; fall back to derived price for "No"
-        let executable = position.executableSellPrice(yesBid: yesBid, noBid: nil, yesAsk: yesAsk, lastPrice: lastPrice)
-
-        if let executable = executable {
-            position.currentPrice = executable
-            position.history.append(executable)
-            if position.history.count > 50 { // Keep last 50 points
-                position.history.removeFirst()
-            }
-
-            // Check for arbitrage after price update
-            checkArbitrageOpportunity(for: &position)
-
-            positions[index] = position
-            calculateTotals()
+        position.currentPrice = executable
+        position.history.append(executable)
+        if position.history.count > 50 { // Keep last 50 points
+            position.history.removeFirst()
         }
+
+        // Check for arbitrage after price update
+        checkArbitrageOpportunity(for: &position)
+
+        positions[index] = position
+        calculateTotals()
     }
     
 }
